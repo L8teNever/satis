@@ -284,6 +284,16 @@
       });
   }
 
+  /* Neues Update, aber der Tab läuft noch mit den alten Skripten? Dann einmal neu laden, nur nicht mitten im Tippen. */
+  function outdated(version) {
+    const meta = document.querySelector('meta[name="satis-assets"]');
+    const active = document.activeElement;
+    if (!version || !meta || meta.content === version || (active && active.matches(TYPING))) return false;
+    if (sessionStorage.getItem("satis-reloaded") === version) return false;  // nie im Kreis laden
+    sessionStorage.setItem("satis-reloaded", version);
+    return true;
+  }
+
   function poll() {
     if (running || document.hidden || nav.busy) return;
     running = true;
@@ -291,6 +301,7 @@
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data) return null;
+        if (outdated(data.assets)) { location.reload(); return null; }
         const changed = String(data.rev) !== rev;
         rev = String(data.rev);
         if (changed) {

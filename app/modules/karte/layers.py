@@ -12,6 +12,14 @@ from ..fabriken.solver import ITEMS, RECIPES
 DATA = json.loads((Path(__file__).parent / "data.json").read_text(encoding="utf-8"))
 # Umrisse der Gebäude von oben aus den Spielmodellen (tools/build_karte_shapes.py): Klasse -> [x, y, x, y, ...] in cm
 SHAPES = json.loads((Path(__file__).parent / "shapes.json").read_text(encoding="utf-8"))
+# Fest im HUB verbaute Teile fehlen in den Spieldaten. Ihre Icons liegen als Kopie der normalen Gebäude in static/icons/building.
+DATA["classes"].update({cls: [name, 0, 0, about] for cls, name, about in [
+    ("Build_GeneratorIntegratedBiomass_C", "Biomass Burner", "Fest im HUB eingebaut, wird von Hand mit Biomasse befüllt."),
+    ("Build_StorageIntegrated_C", "HUB-Spind", "Fest im HUB eingebautes Lager."),
+    ("Build_HubTerminal_C", "HUB-Terminal", "Fest im HUB eingebaut: Hier wählst du die Meilensteine."),
+    ("Build_WorkBenchIntegrated_C", "HUB-Werkbank", "Fest im HUB eingebaut: Hier stellst du Teile von Hand her."),
+    ("BUILD_Potty_mk1_C", "HUB-Toilette", "Fest im HUB eingebaut."),
+]})
 BOUNDS = {"x": -324698.832031, "y": -375000.0, "size": 750000.0}  # Bereich der Karte in Spielkoordinaten (cm)
 PURITY = {0.5: "Unrein", 1.0: "Normal", 2.0: "Rein"}
 
@@ -61,7 +69,7 @@ RULES = [(layer, re.compile(pattern, re.I)) for layer, pattern in [
     ("factories", r"^Build_(Constructor|Smelter|Foundry|Assembler|Manufacturer|OilRefinery|Packager|Blender"
                   r"|HadronCollider|Converter|QuantumEncoder)"),
     ("base", r"^Build_(TradingPost|HubTerminal|WorkBench|Workshop|Mam|SpaceElevator|ResourceSink|RadarTower|StoragePlayer"
-             r"|BlueprintDesigner|LookoutTower|StorageIntegrated)"),
+             r"|BlueprintDesigner|LookoutTower|StorageIntegrated|Potty)"),
     ("stations", r"^Build_(Train(Station|DockingStation|PlatformEmpty)|TruckStation|DroneStation)"),
     ("signals", r"^Build_Railroad(BlockSignal|SwitchControl|EndStop|Signal)"),
     ("storage", r"^Build_(Storage|IndustrialTank|PipeStorageTank|CentralStorage|ContainerScreen)"),
@@ -134,6 +142,7 @@ def build(raw, by="", filename=""):
     details = {row[0]: {} for row in LAYERS}
     seen_items = set()
     label_class = {}  # Beschriftung -> Gebäude-Klasse, für Umriss und Icon auf der Karte
+    power_classes = set()
 
     for cls, rows in raw["things"].items():
         layer = layer_of(cls)
@@ -148,11 +157,14 @@ def build(raw, by="", filename=""):
             text = name
             if extra in RECIPES:
                 text = f"{name}: {RECIPES[extra]['name']}"
-            if len(row) > 5 and row[5]:
-                info = _details(row[5], extra, seen_items)
+            raw_info = row[5] if len(row) > 5 else None
+            if raw_info or extra in RECIPES:  # auch ohne Zustand im Spielstand: Rezept und Mengen stehen fest
+                info = _details(raw_info or {}, extra, seen_items)
                 if info:
                     details[target][str(counts[target])] = info
             counts[target] += 1
+            if target == "generators":
+                power_classes.add(cls)
             if defaults[target]:
                 length, width = _size(cls, defaults[target])
                 if cls in SHAPES:  # echte Maße statt Schätzung
@@ -189,7 +201,7 @@ def build(raw, by="", filename=""):
         counts["players"] += 1
 
     layers = [{"id": i, "label": name, "group": group, "color": color, "kind": kind, "on": on,
-               "count": counts[i], "items": items[i], "icon": _icon(i), **({"details": details[i]} if details[i] else {})}
+               "count": counts[i], "items": items[i], "icon": _icon(i, power_classes), **({"details": details[i]} if details[i] else {})}
               for i, name, group, color, kind, on, _size_ in LAYERS if counts[i]]
     return {
         "meta": {**raw["meta"], "by": by, "filename": filename or raw.get("meta", {}).get("filename", "")},
@@ -309,9 +321,11 @@ NODE_ICONS = {
 WORLD_ICONS = {"drop_closed": "harddrive", "drop_open": "harddrive", "somersloops": "somersloop", "mercer": "mercer"}
 
 
-def _icon(layer):
+def _icon(layer, power_classes=()):
     if layer in WORLD_ICONS:
         return f"items/{WORLD_ICONS[layer]}.png"
+    if layer == "generators" and len(power_classes) == 1:  # nur eine Sorte Kraftwerk: deren Icon statt des allgemeinen
+        return f"building/{next(iter(power_classes)).replace('Build_', 'Desc_', 1)}.png"
     return "" if layer == "players" else f"buildings/{layer}.png"
 
 

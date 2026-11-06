@@ -942,6 +942,7 @@
 
       let sub = recipe || l.label;
       if (!recipe && l.id === "factories") sub = "Kein Rezept eingestellt";
+      if (l.id === "generators") sub = "";  // der Name sagt schon, was es ist
       if (d.mines) sub = `baut ab: ${itemName(d.mines[0])[0]} (${PURITY_NAME[d.mines[1]] || "?"})`;
       const cls = classOf(l.items[i + 5]);
       const layerIcon = ICON_BASE + iconName(l);

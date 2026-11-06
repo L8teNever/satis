@@ -312,7 +312,7 @@ def test_machine_details_for_hover():
     assert {k: smelter[k] for k in ("eff", "clock", "recipe", "inv")} == {
         "eff": 87, "clock": 150, "recipe": RECIPES["Recipe_IngotIron_C"]["name"],
         "inv": [["in", [["Desc_OreIron_C", 50]]], ["out", [["Desc_IronIngot_C", 7]]]]}
-    assert len(layers["factories"]["details"]) == 1  # der leere Constructor bekommt keinen Eintrag
+    assert len(layers["factories"]["details"]) == 3  # auch ohne Zustand: das Rezept liefert Mengen pro Minute
     assert layers["miners"]["details"]["0"]["inv"] == [["out", [["Desc_Water_C", 48.5]]]]  # Liter -> m³
     assert world["items"]["Desc_Water_C"] == ["Water", True] and world["items"]["Desc_OreIron_C"][1] is False
     assert all((ICONS / "item" / f"{c}.png").exists() for c in world["items"])
@@ -384,3 +384,19 @@ def test_hover_knows_buildings_without_inventory():
     assert set(world["labelClass"].values()) == set(raw["things"])
     assert "Power Line" in world["about"]["Build_PowerPoleMk1_C"]
     assert all(c in DATA["classes"] for c in world["about"])
+
+
+def test_hub_parts_and_idle_machines():
+    raw = {"meta": {}, "lines": {}, "wires": [], "players": [], "nodes": [], "things": {
+        "Build_GeneratorIntegratedBiomass_C": [[0, 0, 0, 0, ""], [380, 0, 0, 0, ""]],
+        "BUILD_Potty_mk1_C": [[0, 0, 0, 0, ""]],
+        "Build_ConstructorMk1_C": [[0, 0, 0, 0, "Recipe_IronRod_C"]],
+    }}
+    world = build(raw)
+    by_id = {l["id"]: l for l in world["layers"]}
+    assert by_id["generators"]["icon"] == "building/Desc_GeneratorIntegratedBiomass_C.png"
+    assert by_id["generators"]["count"] == 2 and "Biomass Burner" in world["labels"]
+    assert "Build_GeneratorIntegratedBiomass_C" in world["about"]
+    assert by_id["base"]["count"] == 1 and "other" not in by_id
+    # Nie gelaufen, also kein Zustand im Spielstand: Mengen pro Minute kommen trotzdem aus dem Rezept
+    assert by_id["factories"]["details"]["0"]["rates"]["out"]

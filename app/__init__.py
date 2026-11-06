@@ -84,11 +84,11 @@ def create_app() -> Flask:
 
     @app.get("/live")
     def live():
-        response = jsonify(rev=core.live_rev())
+        response = jsonify(rev=core.live_rev(), assets=asset_version)
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    # Ändern sich Skripte oder Styles (neues Update), lädt satis.js beim nächsten Seitenwechsel einmal richtig neu
+    # Ändern sich Skripte oder Styles (neues Update), lädt satis.js die Seite einmal richtig neu
     static = os.path.join(app.root_path, "static")
     digest = hashlib.sha1()
     for f in sorted(os.listdir(static)):
