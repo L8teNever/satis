@@ -589,5 +589,9 @@
   remember(document);  // vor dem Umbau der Felder
   enhance(document);
   // Seitenskripte stehen unter satis.js und hängen ihre Listener erst noch an
-  document.addEventListener("DOMContentLoaded", () => signal(body, "satis:load"));
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => signal(body, "satis:load"));
+  } else {
+    signal(body, "satis:load");
+  }
 })();

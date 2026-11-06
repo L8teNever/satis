@@ -217,6 +217,8 @@ def test_world_layers():
     assert layers["pillars"]["count"] == 1 and layers["other"]["count"] == 1
     assert layers["belts"]["items"] == [[0, 0, 10, 20]] and layers["wires"]["items"] == [[0, 0, 1, 1]]
     assert "drop_open" in layers and "drop_closed" not in layers
+    assert layers["players"]["kind"] == "player"
+    assert layers["players"]["items"] == [7, 8, 0, world["labels"].index("Simon")]
     assert sum(l["count"] for l in world["layers"]) == 8  # Die Beere zählt nicht
     assert world["meta"]["by"] == "Simon"
 
@@ -228,9 +230,13 @@ def test_renamed_node_is_found_by_position():
 
 
 def test_map_tab_and_upload(client, monkeypatch, tmp_path):
-    monkeypatch.setattr(karte_routes, "_read_save", lambda folder, sav, by: (
-        karte_routes._write(folder / "world.json", build(RAW, by)),
-        karte_routes._write(folder / "status.json", {"state": "ok"})))
+    monkeypatch.setattr(karte_routes, "_read_save", lambda folder, sav, by, *args, **kwargs: (
+        karte_routes._write(folder / "world.json", build(RAW, by, filename=args[0] if args else kwargs.get("filename", ""))),
+        karte_routes._write(folder / "status.json", {"state": "ok", "filename": args[0] if args else kwargs.get("filename", "")})))
+    img_path = tmp_path / "karte" / "map.jpg"
+    img_path.parent.mkdir(exist_ok=True)
+    img_path.write_bytes(b"\xff\xd8\xff\xe0test")
+    assert client.get("/karte/bild", headers=ADMIN).status_code == 200
     page = client.get("/karte/", headers=ADMIN).text
     assert "data-karte" in page
     assert "data-karte" not in client.get("/fabriken/rechner", headers=ADMIN).text

@@ -11,7 +11,7 @@
     const ctx = canvas.getContext("2d");
     const panel = root.querySelector(".s-map-layers");
     const info = root.querySelector(".s-map-info");
-    const status = document.getElementById("s-map-status");
+    const status = root.querySelector("#s-map-status") || document.getElementById("s-map-status");
     const DEFAULT_BOUNDS = { x: -324698.832031, y: -375000.0, size: 750000.0 };
     const STRIDE = { rect: 6, dot: 3, node: 5, player: 4 };
     const STORE = "satis.karte.ebenen";
@@ -37,6 +37,7 @@
 
     function fit() {
       const { w, h } = size();
+      if (w <= 0 || h <= 0) return;
       const b = world ? world.bounds : DEFAULT_BOUNDS;
       view = { x: b.x + b.size / 2, y: b.y + b.size / 2, s: Math.min(w, h) / b.size };
       redraw();
@@ -44,10 +45,15 @@
 
     function zoom(factor, px, py) {
       const { w, h } = size();
+      if (w <= 0 || h <= 0) return;
       const b = world ? world.bounds : DEFAULT_BOUNDS;
-      const s = Math.min(0.5, Math.max(Math.min(w, h) / b.size / 2, view.s * factor));
-      view.x += (px - w / 2) / view.s - (px - w / 2) / s;
-      view.y += (py - h / 2) / view.s - (py - h / 2) / s;
+      const minScale = Math.min(w, h) / b.size / 2;
+      const curScale = (view.s && !isNaN(view.s) && view.s > 0) ? view.s : minScale;
+      const s = Math.min(0.5, Math.max(minScale, curScale * factor));
+      if (curScale > 0) {
+        view.x += (px - w / 2) / curScale - (px - w / 2) / s;
+        view.y += (py - h / 2) / curScale - (py - h / 2) / s;
+      }
       view.s = s;
       redraw();
     }
@@ -203,6 +209,10 @@
 
     function draw() {
       const { w, h } = size();
+      if (w <= 0 || h <= 0) return;
+      if (!view.s || isNaN(view.s) || view.s <= 0 || isNaN(view.x) || isNaN(view.y)) {
+        fit();
+      }
       const ratio = window.devicePixelRatio || 1;
       if (canvas.width !== Math.round(w * ratio) || canvas.height !== Math.round(h * ratio)) {
         canvas.width = Math.round(w * ratio);
@@ -373,11 +383,33 @@
     }
 
     function describe() {
-      if (!world) return "Noch kein Spielstand hochgeladen.";
+      status.replaceChildren();
+      if (!world) {
+        status.textContent = "Noch kein Spielstand hochgeladen.";
+        return;
+      }
       const m = world.meta;
+      const fn = m.filename || (m.name ? (m.name.endsWith(".sav") ? m.name : m.name + ".sav") : "");
+      if (fn) {
+        const badge = document.createElement("span");
+        badge.className = "badge badge-dark border border-secondary text-light mr-1";
+        badge.title = "Zuletzt hochgeladene Datei";
+        const icon = document.createElement("i");
+        icon.className = "fas fa-file-alt mr-1 text-warning";
+        badge.append(icon, fn);
+        status.append(badge);
+      }
       const hours = Math.round(m.seconds / 3600);
       const when = new Date(m.savedAt).toLocaleDateString("de-DE");
-      return [m.session, hours + " Std.", "gespeichert " + when, m.by && "von " + m.by].filter(Boolean).join(" · ");
+      const parts = [];
+      if (m.session && (!fn || !fn.toLowerCase().startsWith(m.session.toLowerCase()))) parts.push(m.session);
+      parts.push(hours + " Std.");
+      parts.push("gespeichert " + when);
+      if (m.by) parts.push("von " + m.by);
+      const text = document.createElement("span");
+      text.className = "text-muted";
+      text.textContent = parts.filter(Boolean).join(" · ");
+      status.append(text);
     }
 
     let loadedAt = null;  // Stand der geladenen Welt, für das Live-Nachladen
@@ -394,7 +426,7 @@
         cache.world = data;
         if (!alive) return;
         world = data;
-        status.textContent = describe();
+        describe();
         if (world) { buildPanel(); if (!keepView) fit(); }
         redraw();
       });
@@ -408,15 +440,23 @@
         watching = false;
         if (!alive) return;
         if (s.state === "running") {
-          status.textContent = "Spielstand wird gelesen, das kann eine Minute dauern.";
+          status.replaceChildren();
+          const txt = document.createElement("span");
+          txt.className = "text-muted";
+          txt.textContent = s.filename ? `Lese ${s.filename} ein, das kann eine Minute dauern…` : "Spielstand wird gelesen, das kann eine Minute dauern.";
+          status.append(txt);
           setTimeout(() => { if (alive) watch(); }, 2000);
         } else if (s.state === "failed") {
-          status.textContent = s.error;
+          status.replaceChildren();
+          const err = document.createElement("span");
+          err.className = "text-danger";
+          err.textContent = s.error;
+          status.append(err);
         } else if (!live || s.at !== loadedAt) {
           loadedAt = s.at;
           load(live && world);
         } else {
-          status.textContent = describe();
+          describe();
         }
       }).catch(() => { watching = false; if (alive) status.textContent = "Der Stand ließ sich nicht abrufen."; });
     }
@@ -424,14 +464,30 @@
     root.querySelector("#s-map-file").addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      status.textContent = "Wird hochgeladen.";
+      status.replaceChildren();
+      const txt = document.createElement("span");
+      txt.className = "text-muted";
+      txt.textContent = `Lade ${file.name} hoch…`;
+      status.append(txt);
       const body = new FormData();
       body.append("save", file);
       fetch(root.dataset.upload, { method: "POST", headers: { "X-CSRF-Token": root.dataset.csrf }, body })
         .then((res) => res.json().then((data) => {
-          if (res.ok) watch(); else status.textContent = data.error;
+          if (res.ok) watch(); else {
+            status.replaceChildren();
+            const err = document.createElement("span");
+            err.className = "text-danger";
+            err.textContent = data.error;
+            status.append(err);
+          }
         }))
-        .catch(() => { status.textContent = "Das Hochladen hat nicht geklappt. Lade die Seite neu und versuch es noch einmal."; });
+        .catch(() => {
+          status.replaceChildren();
+          const err = document.createElement("span");
+          err.className = "text-danger";
+          err.textContent = "Das Hochladen hat nicht geklappt. Lade die Seite neu und versuch es noch einmal.";
+          status.append(err);
+        });
       e.target.value = "";
     });
     root.querySelector("[data-map-zoom-in]").addEventListener("click", () => { const { w, h } = size(); zoom(1.5, w / 2, h / 2); });
@@ -448,11 +504,21 @@
       fit();
       const img = new Image();
       img.onload = () => { image = img; redraw(); };
+      img.onerror = () => redraw();
       img.src = root.dataset.image;
       watch();
     }
     start();
-    const resize = new ResizeObserver(redraw);
+    let fitted = false;
+    const resize = new ResizeObserver(() => {
+      const { w, h } = size();
+      if (w > 0 && h > 0 && (!fitted || !view.s || view.s <= 0 || isNaN(view.s))) {
+        fit();
+        fitted = true;
+      } else {
+        redraw();
+      }
+    });
     resize.observe(canvas);
     return {
       root,
@@ -461,13 +527,30 @@
     };
   }
 
+  function check() {
+    const root = document.querySelector("[data-karte]");
+    if (root && (!current || current.root !== root)) current = init(root);
+  }
+
+  // Direkt beim Starten initialisieren, falls das Element schon im DOM ist:
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", check);
+  } else {
+    check();
+  }
+
   // Seitenwechsel ohne Neuladen (satis.js): Karte auf der neuen Seite starten, die alte anhalten
   document.addEventListener("satis:load", (e) => {
-    const root = e.target.querySelector && e.target.querySelector("[data-karte]");
+    const root = (e.target && e.target.matches && e.target.matches("[data-karte]"))
+      ? e.target
+      : (e.target && e.target.querySelector && e.target.querySelector("[data-karte]"));
     if (root && (!current || current.root !== root)) current = init(root);
   });
   document.addEventListener("satis:unload", (e) => {
-    if (current && e.target.contains(current.root)) { current.stop(); current = null; }
+    if (current && e.target && e.target.contains && e.target.contains(current.root)) {
+      current.stop();
+      current = null;
+    }
   });
   // Hat jemand anderes einen Spielstand hochgeladen, kommt die neue Welt von selbst (satis.js meldet jede Änderung)
   document.addEventListener("satis:live", () => { if (current) current.live(); });

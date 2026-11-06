@@ -45,19 +45,19 @@ def _status():
     return status
 
 
-def _read_save(folder, sav, by):
+def _read_save(folder, sav, by, filename=""):
     raw = folder / "raw.json"
     try:
         run = subprocess.run(["node", "--max-old-space-size=4096", str(EXTRACT), str(sav), str(raw)],
                              capture_output=True, timeout=STALE_SECONDS - 60)
         if run.returncode:
             raise ValueError(run.stderr.decode("utf-8", "replace")[-500:])
-        world = build(json.loads(raw.read_text(encoding="utf-8")), by)
+        world = build(json.loads(raw.read_text(encoding="utf-8")), by, filename=filename)
         _write(folder / "world.json", world)
-        _write(folder / "status.json", {"state": "ok", "at": time.time()})
+        _write(folder / "status.json", {"state": "ok", "at": time.time(), "filename": filename})
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
         print("Spielstand nicht lesbar:", exc, flush=True)
-        _write(folder / "status.json", {"state": "failed", "error": "Die Datei ließ sich nicht als Spielstand lesen."})
+        _write(folder / "status.json", {"state": "failed", "error": "Die Datei ließ sich nicht als Spielstand lesen.", "filename": filename})
     finally:
         sav.unlink(missing_ok=True)
         raw.unlink(missing_ok=True)
@@ -79,10 +79,11 @@ def upload():
     if _status()["state"] == "running":
         return jsonify(error="Gerade wird schon ein Spielstand eingelesen."), 409
     folder = _dir()
-    _write(folder / "status.json", {"state": "running", "started": time.time()})
+    filename = Path(file.filename).name
+    _write(folder / "status.json", {"state": "running", "started": time.time(), "filename": filename})
     sav = folder / "upload.sav"
     file.save(sav)
-    threading.Thread(target=_read_save, args=(folder, sav, g.user["name"]), daemon=True).start()
+    threading.Thread(target=_read_save, args=(folder, sav, g.user["name"], filename), daemon=True).start()
     return jsonify(_status()), 202
 
 

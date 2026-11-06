@@ -116,7 +116,7 @@ def _flat(line):
     return [v for i, v in enumerate(line) if i % 3 != 2]
 
 
-def build(raw, by=""):
+def build(raw, by="", filename=""):
     labels, index = [], {}
 
     def label(text):
@@ -165,7 +165,7 @@ def build(raw, by=""):
                "count": counts[i], "items": items[i]}
               for i, name, group, color, kind, on, _size_ in LAYERS if counts[i]]
     return {
-        "meta": {**raw["meta"], "by": by},
+        "meta": {**raw["meta"], "by": by, "filename": filename or raw.get("meta", {}).get("filename", "")},
         "bounds": BOUNDS,
         "labels": labels,
         "layers": _node_layers(raw["nodes"], label) + layers,
