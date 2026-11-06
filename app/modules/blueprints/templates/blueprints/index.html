@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Blueprints{% endblock %}
+{% block live %}{% endblock %}{# nur die Liste aktualisiert sich live, ein frischer Sync-Schlüssel soll stehen bleiben #}
+{% block content %}
+<div class="row">
+  <div class="col-lg-8 mb-3">
+    <div class="card" data-live="bp-list">
+      <div class="card-header"><i class="fas fa-drafting-compass mr-1"></i>Geteilte Blueprints <span class="badge badge-secondary ml-1">{{ rows|length }}</span></div>
+      <div class="card-body p-0">
+        {% if rows %}
+        <div class="table-responsive">
+          <table class="table table-hover table-stack mb-0">
+            <thead><tr><th>Name</th><th>Von</th><th>Stand</th><th></th></tr></thead>
+            <tbody>
+              {% for b in rows %}
+              <tr>
+                <td>
+                  <span class="font-weight-bold">{{ b.name }}</span>
+                  {% if b.description %}<div class="small text-muted">{{ b.description }}</div>{% endif %}
+                  {% if not b.has_cfg %}<div class="small text-muted"><i class="fas fa-info-circle mr-1"></i>ohne .sbpcfg (kein Symbol im Spiel)</div>{% endif %}
+                </td>
+                <td class="text-nowrap" data-label="Von"><i class="fas fa-hard-hat mr-1"></i>{{ b.by_name or '–' }}</td>
+                <td class="text-nowrap" data-label="Stand">{{ b.updated_at[8:10] }}.{{ b.updated_at[5:7] }}.{{ b.updated_at[:4] }} · {{ (b.size / 1024)|round(0)|int }} KB</td>
+                <td class="text-right text-nowrap s-corner">
+                  <a class="btn btn-sm btn-secondary" href="{{ url_for('blueprints.download', bid=b.id, ext='sbp') }}" data-no-nav title=".sbp herunterladen"><i class="fas fa-download mr-1"></i>.sbp</a>
+                  {% if b.has_cfg %}<a class="btn btn-sm btn-secondary" href="{{ url_for('blueprints.download', bid=b.id, ext='sbpcfg') }}" data-no-nav title=".sbpcfg herunterladen">.sbpcfg</a>{% endif %}
+                  {% if me.role == 'admin' or b.uploaded_by == me.id %}
+                  <form class="d-inline" method="post" action="{{ url_for('blueprints.delete', bid=b.id) }}" data-confirm="„{{ b.name }}“ löschen?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-sm btn-danger" title="Löschen" aria-label="Löschen"><i class="fas fa-trash-alt"></i></button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center py-5 mb-0"><i class="fas fa-drafting-compass fa-2x d-block mb-2"></i>Noch keine Blueprints. Lad rechts die erste hoch.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header"><i class="fas fa-upload mr-1"></i>Hochladen</div>
+      <form method="post" action="{{ url_for('blueprints.upload') }}" enctype="multipart/form-data">
+        <div class="card-body">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-group">
+            <label for="files">Dateien (.sbp und .sbpcfg)</label>
+            <input id="files" class="form-control-file" type="file" name="files" accept=".sbp,.sbpcfg" multiple required>
+            <small class="form-text text-muted">Liegen im Spiel unter <code>%LOCALAPPDATA%\FactoryGame\Saved\SaveGames\blueprints\&lt;Session&gt;</code>. Gleicher Name ersetzt die alte Version.</small>
+          </div>
+          <div class="form-group mb-0">
+            <label for="description">Beschreibung (optional)</label>
+            <input id="description" class="form-control" name="description" maxlength="500">
+          </div>
+        </div>
+        <div class="card-footer text-right">
+          <button class="btn btn-warning text-secondary font-weight-bold"><i class="fas fa-upload mr-1"></i>Hochladen</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <div class="card-header"><i class="fas fa-sync-alt mr-1"></i>Sync-Skript für deinen PC</div>
+      <div class="card-body">
+        <p class="small mb-2">Läuft neben dem Spiel und erledigt zwei Dinge von selbst: neue Blueprints landen direkt im Blueprint-Ordner, und dein neuester Spielstand geht für die Karte auf den Server.</p>
+        <ol class="small pl-3 mb-3">
+          <li><a href="{{ url_for('blueprints.script') }}" data-no-nav>satis_sync.py herunterladen</a> (braucht Python 3)</li>
+          <li>Unten einen Sync-Schlüssel erstellen</li>
+          <li><code>python satis_sync.py</code> starten und den Schlüssel einfügen</li>
+        </ol>
+        {% if token %}
+        <div class="alert alert-warning small mb-2">
+          <strong>Dein Sync-Schlüssel</strong>, nur jetzt sichtbar:
+          <input class="form-control form-control-sm mt-1" value="{{ token }}" readonly onclick="this.select()" aria-label="Sync-Schlüssel">
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('blueprints.token') }}" data-confirm="Neuen Sync-Schlüssel erstellen? Ein alter hört dann auf zu funktionieren.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-secondary"><i class="fas fa-key mr-1"></i>Sync-Schlüssel erstellen</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

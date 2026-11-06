@@ -1,0 +1,7 @@
+<form class="s-step" method="post" action="{{ url_for('fabriken.step', plan_id=plan.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="recipe" value="{{ recipe }}">
+  <button class="btn btn-sm {{ 'btn-success' if p.done else 'btn-outline-secondary' }}" name="done" value="{{ 0 if p.done else 1 }}" aria-pressed="{{ 'true' if p.done else 'false' }}" title="{{ 'Nicht erledigt' if p.done else 'Erledigt' }}" aria-label="{{ 'Nicht erledigt' if p.done else 'Erledigt' }}"><i class="fas fa-check"></i></button>
+</form>
+{% if p.done %}<div class="small text-muted">{{ p.by }}<br>{{ p.at|when }}</div>
+{% elif p.short %}<div class="small text-warning">{{ p.by }} hatte {{ p.count|num }}×, jetzt braucht es mehr</div>{% endif %}

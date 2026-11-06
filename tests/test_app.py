@@ -33,6 +33,10 @@ def test_no_identity_is_denied(client):
     assert client.get("/").status_code == 403
 
 
+def test_pages_have_no_footer(client):
+    assert "<footer" not in client.get("/", headers=ADMIN).text
+
+
 def test_healthz_needs_no_login(client):
     assert client.get("/healthz").text == "ok"
 
@@ -82,3 +86,35 @@ def test_admin_cannot_remove_himself(client):
     client.get("/", headers=ADMIN)
     r = post(client, "/admin/1/delete", ADMIN, "/admin/")
     assert r.status_code == 400
+
+
+def test_live_counter_goes_up_on_changes(client):
+    client.get("/", headers=ADMIN)
+    before = client.get("/live", headers=ADMIN).get_json()["rev"]
+    assert client.get("/tasks/", headers=ADMIN).status_code == 200
+    assert client.get("/live", headers=ADMIN).get_json()["rev"] == before  # Ansehen ändert nichts
+    add_friend(client)
+    after = client.get("/live", headers=ADMIN).get_json()["rev"]
+    assert after > before
+    assert f'data-live-rev="{after}"' in client.get("/", headers=ADMIN).text
+
+
+def test_failed_change_does_not_count(client):
+    client.get("/", headers=ADMIN)
+    before = client.get("/live", headers=ADMIN).get_json()["rev"]
+    client.post("/admin/add", data={"name": "x"}, headers=ADMIN)  # ohne CSRF-Token
+    assert client.get("/live", headers=ADMIN).get_json()["rev"] == before
+
+
+def test_live_needs_login(client):
+    assert client.get("/live").status_code == 403
+
+
+def test_pages_are_built_for_switching_without_reload(client):
+    # satis.js tauscht beim Seitenwechsel diese Teile einzeln und lädt bei neuer Asset-Version einmal richtig
+    for page in ("/", "/tasks/", "/fabriken/rechner"):
+        html = client.get(page, headers=ADMIN).text
+        for name in ("header", "crumbs", "flash", "content"):
+            assert f'data-part="{name}"' in html, (page, name)
+        assert 'name="satis-assets" content="' in html
+        assert "this.form.submit()" not in html  # das würde am Seitenwechsel vorbei neu laden

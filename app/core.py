@@ -65,6 +65,16 @@ CREATE TABLE IF NOT EXISTS users (
     role       TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin','user')),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS live (
+    id  INTEGER PRIMARY KEY CHECK (id = 1),
+    rev INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO live (id, rev) VALUES (1, 0);
+CREATE TABLE IF NOT EXISTS sync_tokens (
+    user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -77,6 +87,26 @@ def init_db():
             con.executescript(m.schema)
     con.commit()
     con.close()
+
+
+# --------------------------------------------------------------------------- Live
+# Ein Zähler für alle Änderungen. Offene Seiten fragen ihn ab und laden bei einem neuen Stand nach (satis.js).
+def live_rev() -> int:
+    return get_db().execute("SELECT rev FROM live WHERE id = 1").fetchone()[0]
+
+
+def bump_live():
+    """Eigene Verbindung, damit das auch aus Hintergrund-Threads geht (z. B. Spielstand fertig gelesen).
+    Klappt es nicht, sehen die anderen die Änderung erst beim Neuladen. Die Änderung selbst bleibt gültig."""
+    try:
+        con = sqlite3.connect(data_dir() / "satis.db", timeout=10)
+        try:
+            con.execute("UPDATE live SET rev = rev + 1 WHERE id = 1")
+            con.commit()
+        finally:
+            con.close()
+    except sqlite3.Error as exc:
+        print("Live-Zähler nicht erhöht:", exc, flush=True)
 
 
 # --------------------------------------------------------------------------- Auth
@@ -130,6 +160,28 @@ def resolve_user():
         db.commit()
         user = db.execute(find, (email,)).fetchone()
     return user, ("ok" if user else "unknown")
+
+
+# --------------------------------------------------------------------------- Sync-Schlüssel
+# Für das lokale Sync-Skript (Blueprints holen, Spielstand hochladen). Es schickt den Schlüssel im Header
+# X-Satis-Token. Gespeichert wird nur der Hash, der Schlüssel selbst ist nur einmal beim Erstellen zu sehen.
+def _token_hash(token: str) -> str:
+    import hashlib
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def new_sync_token(user_id: int) -> str:
+    token = "satis_" + secrets.token_urlsafe(32)
+    db = get_db()
+    db.execute("INSERT OR REPLACE INTO sync_tokens (user_id, token_hash) VALUES (?, ?)", (user_id, _token_hash(token)))
+    db.commit()
+    return token
+
+
+def user_from_token(token: str):
+    return get_db().execute(
+        "SELECT u.* FROM sync_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?",
+        (_token_hash(token.strip()),)).fetchone()
 
 
 def admin_required(view):

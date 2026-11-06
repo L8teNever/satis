@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de" class="h-100">
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -8,11 +8,12 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/solid.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='satis.css') }}">
+  <meta name="satis-assets" content="{{ asset_version }}">
 </head>
-<body class="d-flex flex-column h-100">
+<body{% if me %} data-live-url="{{ url_for('live') }}" data-live-rev="{{ live_rev() }}"{% endif %}>
   {% set cur = nav_modules | selectattr('blueprint.name', 'eq', request.blueprint) | first %}
-  <header class="sticky-top">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <header class="sticky-top" data-part="header">
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark">
       <a class="navbar-brand" href="{{ url_for('home') if me else '#' }}"><i class="fas fa-industry text-warning mr-2"></i>SATIS</a>
       {% if me %}
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Menü">
@@ -43,9 +44,9 @@
     </nav>
   </header>
 
-  <main role="main" class="py-3 flex-fill">
+  <main role="main" class="py-3">
     <div class="container-fluid">
-      <nav aria-label="breadcrumb">
+      <nav aria-label="breadcrumb" data-part="crumbs">
         <ol class="breadcrumb">
           {% if me and request.endpoint != 'home' %}
           <li class="breadcrumb-item"><a href="{{ url_for('home') }}"><i class="fas fa-home mr-1"></i>Übersicht</a></li>
@@ -54,16 +55,14 @@
           <li class="breadcrumb-actions">{% block actions %}{% endblock %}</li>
         </ol>
       </nav>
+      <div data-part="flash">
       {% for msg in get_flashed_messages() %}
       <div class="alert alert-info" role="alert"><i class="fas fa-info-circle mr-1"></i>{{ msg }}</div>
       {% endfor %}
-      {% block content %}{% endblock %}
+      </div>
+      <div data-part="content" {% block live %}data-live="content"{% endblock %}>{% block content %}{% endblock %}</div>
     </div>
   </main>
-
-  <footer class="footer py-3 bg-dark">
-    <div class="container-fluid"><span class="text-muted">Satis · Fabrikplanung für unsere Satisfactory-Welt</span></div>
-  </footer>
 
   <script src="{{ url_for('static', filename='vendor/jquery.slim.min.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>

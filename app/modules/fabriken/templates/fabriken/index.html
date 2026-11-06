@@ -5,14 +5,14 @@
 <div class="card">
   <div class="card-header">
     <ul class="nav nav-tabs nav-fill card-header-tabs">
-      <li class="nav-item"><a class="nav-link {{ 'active' if not show_deleted }}" href="{{ url_for('fabriken.index') }}"><i class="fas fa-industry"></i>&nbsp; Pläne</a></li>
-      <li class="nav-item"><a class="nav-link {{ 'active' if show_deleted }}" href="{{ url_for('fabriken.index', show='deleted') }}"><i class="fas fa-trash-alt"></i>&nbsp; Gelöscht</a></li>
+      <li class="nav-item"><a class="nav-link {{ 'active' if not show_deleted }}" href="{{ url_for('fabriken.index') }}"><i class="fas fa-industry mr-1"></i>Pläne</a></li>
+      <li class="nav-item"><a class="nav-link {{ 'active' if show_deleted }}" href="{{ url_for('fabriken.index', show='deleted') }}"><i class="fas fa-trash-alt mr-1"></i>Gelöscht</a></li>
     </ul>
   </div>
   <div class="card-body p-0">
     {% if plans %}
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover table-stack mb-0">
         <thead><tr><th>Plan</th><th>Erstellt</th><th>{{ 'Gelöscht' if show_deleted else 'Zuletzt geändert' }}</th><th></th></tr></thead>
         <tbody>
           {% for item in plans %}{% set p = item.row %}
@@ -21,13 +21,13 @@
               <a class="font-weight-bold" href="{{ url_for('fabriken.show', plan_id=p.id) }}">{{ p.name }}</a>
               <div class="small text-muted">{{ item.summary }}</div>
             </td>
-            <td class="text-nowrap"><i class="fas fa-hard-hat mr-1"></i>{{ p.created_by_name }}<div class="small text-muted">{{ p.created_at|when }}</div></td>
+            <td class="text-nowrap" data-label="Erstellt"><i class="fas fa-hard-hat mr-1"></i>{{ p.created_by_name }}<div class="small text-muted">{{ p.created_at|when }}</div></td>
             {% if show_deleted %}
-            <td class="text-nowrap"><i class="fas fa-trash-alt mr-1"></i>{{ p.deleted_by_name }}<div class="small text-muted">{{ p.deleted_at|when }}</div></td>
+            <td class="text-nowrap" data-label="Gelöscht"><i class="fas fa-trash-alt mr-1"></i>{{ p.deleted_by_name }}<div class="small text-muted">{{ p.deleted_at|when }}</div></td>
             {% else %}
-            <td class="text-nowrap"><i class="fas fa-edit mr-1"></i>{{ p.updated_by_name }}<div class="small text-muted">{{ p.updated_at|when }}</div></td>
+            <td class="text-nowrap" data-label="Zuletzt geändert"><i class="fas fa-edit mr-1"></i>{{ p.updated_by_name }}<div class="small text-muted">{{ p.updated_at|when }}</div></td>
             {% endif %}
-            <td class="text-right">
+            <td class="text-right s-corner">
               {% if item.may_delete %}
               {% if show_deleted %}
               <form method="post" action="{{ url_for('fabriken.restore', plan_id=p.id) }}">

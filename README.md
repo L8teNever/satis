@@ -75,13 +75,65 @@ POST-Formular braucht `<input type="hidden" name="csrf_token" value="{{ csrf_tok
 Datenbankzugriff läuft über `core.get_db()`, der aktuelle Nutzer steht in `g.user`.
 `schema` legt nur neue Tabellen an. Spalten in bestehenden Tabellen müssen per `ALTER TABLE` ergänzt werden.
 
+### Live-Aktualisierung
+
+Ändert jemand etwas, sehen es alle anderen ohne Neuladen. Jede geglückte POST-Anfrage zählt in der Tabelle `live`
+einen Zähler hoch. Offene Seiten fragen `/live` alle 4 Sekunden ab, aber nur solange sie sichtbar sind. Bei einem neuen
+Stand holen sie die Seite still neu und tauschen jeden Bereich mit `data-live="name"`, dessen HTML sich geändert hat.
+
+- **Neue Module:** Mehr braucht es nicht. `base.html` legt den ganzen Inhalt in einen Bereich `content`.
+- **Eigene Bereiche:** `{% block live %}{% endblock %}` schaltet den Gesamtbereich ab, dann einzelne Elemente mit `data-live` markieren (siehe `calc.html`).
+- **Skripte:** Nach dem Tausch läuft `satisEnhance` für den Bereich, danach kommt das Ereignis `satis:load` (siehe unten). Für einen Sondertausch gibt es `satisLive.swap[name] = (alt, neu) => true`, das nutzt der Graph.
+- **Schutz:** Wer in einem Bereich tippt oder ein Menü offen hat, behält ihn, bis er fertig ist.
+- **Hintergrund-Arbeit:** Läuft etwas außerhalb einer Anfrage, ruft man am Ende `core.bump_live()` auf, wie beim Spielstand.
+
+### Seitenwechsel ohne Neuladen
+
+Links und Formulare laden nicht die ganze Seite neu. `satis.js` holt die neue Seite im Hintergrund und tauscht nur, was
+anders ist: Kopf (`data-part="header"`), Brotkrumen, Meldungen und Inhalt einzeln. Bleibt man auf derselben Seite und das
+Gerüst ohne die `data-live`-Bereiche ist gleich, werden nur die geänderten Bereiche getauscht. Im Rechner bleiben Karte,
+Zoom und offener Tab dadurch stehen. Dauert es länger als einen Moment, laufen oben ein Ladebalken und der Inhalt wird
+leicht abgedunkelt. Zeigt die Maus oder der Finger auf einen Link, wird die Seite schon vorgeladen.
+
+- **Seitenskripte:** Ein Skript im Block `scripts` wird nur einmal geladen, auch wenn man die Seite mehrmals öffnet.
+  Es startet darum nicht selbst, sondern hört auf `satis:load` (neue Inhalte, `event.target` ist der Bereich) und räumt bei
+  `satis:unload` auf. Klicks am `document` anhängen. Inline-Skripte im Inhalt laufen nach einem Wechsel nicht.
+- **Formulare:** Normal mit `method` und `action` schreiben. Zum Absenden aus Skripten `form.requestSubmit()` nehmen,
+  `form.submit()` geht am Wechsel vorbei.
+- **Ausnahmen:** `data-no-nav` an Link oder Formular lädt ganz normal. Links mit `target`, `download` oder nach `/cdn-cgi/` sowieso.
+- **Updates:** `<meta name="satis-assets">` enthält eine Prüfsumme über `static/*.js` und `*.css`. Passt sie nicht mehr,
+  lädt der nächste Wechsel die Seite einmal ganz.
+- **Notfall:** Klappt der Abruf nicht (z. B. Cloudflare-Login abgelaufen), lädt der Browser ganz normal.
+
+## Karte
+
+Im Rechner gibt es den Tab **Karte**. Dort lädt man einen Spielstand hoch, `extract/extract.mjs` liest ihn im Hintergrund aus und
+`app/modules/karte/layers.py` macht daraus die Ebenen. Eine neue Ebene ist ein Eintrag in `LAYERS` und eine Regel in `RULES`.
+Das Kartenbild gehört Coffee Stain und ist nicht im Repo. Ohne `/data/karte/map.jpg` bleibt der Hintergrund einfarbig.
+
 ## Fabriken-Rechner
 
 `app/modules/fabriken/solver.py` rechnet aus Zielen pro Minute die Rezepte, Gebäude, Rohstoffe und den Strom. Pläne werden nie
 wirklich gelöscht, `plan_log` hält fest, wer wann was gemacht hat.
 
+In gespeicherten Plänen lassen sich Schritte abhaken und Leuten zuteilen (`plan_steps`, ein Eintrag pro Plan und Rezept). Wird ein Plan
+größer, gilt ein abgehakter Schritt wieder als offen, bis die neue Menge abgehakt ist. Bei einem anderen Rezept beginnt der Schritt neu.
+
 Die Spieldaten in `data.json` kommen aus [SatisfactoryTools](https://github.com/greeny/SatisfactoryTools) (MIT, Stand Spielversion 1.0).
 Neu bauen mit `python tools/build_fabriken_data.py <data.json> app/modules/fabriken/data.json`. Item-Bilder gehören Coffee Stain und sind nicht enthalten.
+
+## Notizen
+
+Jeder hat eigene Notiz-Blöcke unter `/notizen/`. Sie speichern sich beim Tippen von selbst. Wer am Zeilenende eine Rechnung mit `=` abschließt (z. B. `4*5=`), bekommt das Ergebnis direkt dahinter (`+ - * / ^ %`, Klammern, Komma oder Punkt). Notizen lassen sich anheften, verschieben, mit einer Kategorie versehen und sortieren. Über „Freigeben“ bekommen andere Nutzer Lese- oder Schreibzugriff.
+
+## Blueprints und Sync-Skript
+
+Unter `/blueprints/` lädt jeder `.sbp` (+ `.sbpcfg`) hoch, gleicher Name ersetzt die alte Version.
+Das Skript `satis_sync.py` (Download auf der Seite, nur Python 3) läuft auf dem eigenen PC: Es holt neue Blueprints in
+`%LOCALAPPDATA%\FactoryGame\Saved\SaveGames\blueprints\<Session>` und lädt den neuesten Spielstand für die Karte hoch.
+Es meldet sich mit einem Sync-Schlüssel (`X-Satis-Token`, auf der Seite erstellen) an, der nur für `blueprints` und
+`karte` gilt. Damit Cloudflare Access das Skript durchlässt, braucht es ein Service-Token
+(`CF-Access-Client-Id`/`-Secret` in `satis_sync.ini`) und in der Access-App eine Regel „Service Auth“ dafür.
 
 ## Aussehen
 

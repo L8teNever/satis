@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Notiz freigeben{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><i class="fas fa-share-alt mr-1"></i>Freigeben: {{ n.title or 'Ohne Titel' }}</div>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-body">
+          {% for u in users %}
+          {% set cur = 'edit' if shares.get(u.id) == 1 else ('read' if u.id in shares else '') %}
+          <div class="form-group row align-items-center mb-2">
+            <label class="col-6 col-form-label" for="u{{ u.id }}"><i class="fas fa-user mr-1"></i>{{ u.name }}</label>
+            <div class="col-6">
+              <select id="u{{ u.id }}" name="u{{ u.id }}" class="form-control form-control-sm">
+                <option value="" {{ 'selected' if not cur }}>Kein Zugriff</option>
+                <option value="read" data-icon="fa-eye" {{ 'selected' if cur == 'read' }}>Lesen</option>
+                <option value="edit" data-icon="fa-pen" {{ 'selected' if cur == 'edit' }}>Bearbeiten</option>
+              </select>
+            </div>
+          </div>
+          {% else %}
+          <p class="text-muted mb-0">Es gibt noch keine anderen Nutzer.</p>
+          {% endfor %}
+        </div>
+        <div class="card-footer text-right">
+          <a class="btn btn-secondary" href="{{ url_for('notizen.index') }}">Abbrechen</a>
+          <button class="btn btn-warning text-secondary font-weight-bold"><i class="fas fa-save mr-1"></i>Speichern</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

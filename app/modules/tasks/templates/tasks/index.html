@@ -9,11 +9,11 @@
   <div class="card-header">
     <ul class="nav nav-tabs nav-fill card-header-tabs">
       <li class="nav-item">
-        <a class="nav-link {{ 'active' if f_status not in STATUS }}" href="{{ url_for('tasks.index', who=f_who or None) }}"><i class="fas fa-list"></i>&nbsp; Alle</a>
+        <a class="nav-link {{ 'active' if f_status not in STATUS }}" href="{{ url_for('tasks.index', who=f_who or None) }}"><i class="fas fa-list mr-1"></i>Alle</a>
       </li>
       {% for k, v in STATUS.items() %}
       <li class="nav-item">
-        <a class="nav-link {{ 'active' if f_status == k }}" href="{{ url_for('tasks.index', status=k, who=f_who or None) }}"><i class="fas {{ status_icons[k] }}"></i>&nbsp; {{ v }}</a>
+        <a class="nav-link {{ 'active' if f_status == k }}" href="{{ url_for('tasks.index', status=k, who=f_who or None) }}"><i class="fas {{ status_icons[k] }} mr-1"></i>{{ v }}</a>
       </li>
       {% endfor %}
     </ul>
@@ -21,7 +21,7 @@
   <div class="card-body p-0">
     {% if tasks %}
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover table-stack mb-0">
         <thead>
           <tr><th>Aufgabe</th><th>Zuständig</th><th>Priorität</th><th>Fällig</th><th>Status</th><th></th></tr>
         </thead>
@@ -32,17 +32,17 @@
               <a class="task-title font-weight-bold" href="{{ url_for('tasks.edit', task_id=t.id) }}">{{ t.title }}</a>
               {% if t.description %}<div class="task-desc small text-muted">{{ t.description }}</div>{% endif %}
             </td>
-            <td class="text-nowrap">{% if t.assignee_name %}<i class="fas fa-hard-hat mr-1"></i>{{ t.assignee_name }}{% else %}<span class="text-muted">Niemand zugeteilt</span>{% endif %}</td>
-            <td><span class="badge {{ prio_badges[t.priority] }}">{{ PRIORITY[t.priority] }}</span></td>
-            <td class="text-nowrap {{ 'text-danger font-weight-bold' if t.due and t.due < today and t.status != 'done' }}">{% if t.due %}<i class="fas fa-calendar-alt mr-1"></i>{{ t.due[8:10] }}.{{ t.due[5:7] }}.{{ t.due[:4] }}{% endif %}</td>
-            <td>
+            <td class="text-nowrap" data-label="Zuständig">{% if t.assignee_name %}<i class="fas fa-hard-hat mr-1"></i>{{ t.assignee_name }}{% else %}<span class="text-muted">Niemand zugeteilt</span>{% endif %}</td>
+            <td data-label="Priorität"><span class="badge {{ prio_badges[t.priority] }}">{{ PRIORITY[t.priority] }}</span></td>
+            <td class="text-nowrap {{ 'text-danger font-weight-bold' if t.due and t.due < today and t.status != 'done' }}" data-label="Fällig">{% if t.due %}<i class="fas fa-calendar-alt mr-1"></i>{{ t.due[8:10] }}.{{ t.due[5:7] }}.{{ t.due[:4] }}{% endif %}</td>
+            <td class="s-full" data-label="Status">
               <form method="post" action="{{ url_for('tasks.set_status', task_id=t.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <select name="status" class="form-control form-control-sm" aria-label="Status" onchange="this.form.submit()">{{ status_options(STATUS, t.status) }}</select>
+                <select name="status" class="form-control form-control-sm" aria-label="Status" onchange="this.form.requestSubmit()">{{ status_options(STATUS, t.status) }}</select>
                 <noscript><button class="btn btn-sm btn-secondary mt-1">OK</button></noscript>
               </form>
             </td>
-            <td class="text-right">
+            <td class="text-right s-corner">
               {% if me.role == 'admin' or t.created_by == me.id %}
               <form method="post" action="{{ url_for('tasks.delete', task_id=t.id) }}" data-confirm="Aufgabe löschen?">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -59,11 +59,11 @@
     <p class="text-muted text-center py-5 mb-0"><i class="fas fa-clipboard-list fa-2x d-block mb-2"></i>Keine Aufgaben gefunden.</p>
     {% endif %}
   </div>
-  <div class="card-footer d-flex align-items-center justify-content-between">
-    <form class="form-inline" method="get">
+  <div class="card-footer d-flex flex-wrap align-items-center justify-content-between">
+    <form class="form-inline flex-nowrap my-1 mr-3" method="get">
       {% if f_status in STATUS %}<input type="hidden" name="status" value="{{ f_status }}">{% endif %}
       <label class="mr-2" for="who"><i class="fas fa-filter mr-1"></i>Zuständig</label>
-      <select id="who" name="who" class="form-control form-control-sm" onchange="this.form.submit()">
+      <select id="who" name="who" class="form-control form-control-sm" onchange="this.form.requestSubmit()">
         <option value="">Alle</option>
         <option value="me" data-icon="fa-user" {{ 'selected' if f_who == 'me' }}>Ich</option>
         <option value="none" {{ 'selected' if f_who == 'none' }}>Niemand</option>
@@ -71,7 +71,7 @@
       </select>
       <noscript><button class="btn btn-sm btn-secondary ml-2">Filtern</button></noscript>
     </form>
-    <span><i class="fas fa-tasks mr-1"></i><strong>{{ tasks|length }}</strong> {{ 'Aufgabe' if tasks|length == 1 else 'Aufgaben' }}</span>
+    <span class="my-1"><i class="fas fa-tasks mr-1"></i><strong>{{ tasks|length }}</strong> {{ 'Aufgabe' if tasks|length == 1 else 'Aufgaben' }}</span>
   </div>
 </div>
 {% endblock %}

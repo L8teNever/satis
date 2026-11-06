@@ -7,19 +7,19 @@
     <form method="post" action="{{ url_for('admin.add') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-row align-items-end">
-        <div class="form-group col-md-4 mb-md-0">
+        <div class="form-group col-md-6 col-lg-4 mb-lg-0">
           <label for="new-name">Name</label>
           <input id="new-name" class="form-control" name="name" maxlength="80" required>
         </div>
-        <div class="form-group col-md-4 mb-md-0">
+        <div class="form-group col-md-6 col-lg-4 mb-lg-0">
           <label for="new-email">E-Mail</label>
           <input id="new-email" class="form-control" type="email" name="email" maxlength="200" required>
         </div>
-        <div class="form-group col-md-2 mb-md-0">
+        <div class="form-group col-md-6 col-lg-2 mb-md-0">
           <label for="new-role">Rolle</label>
           <select id="new-role" class="form-control" name="role"><option value="user" data-icon="fa-user">Nutzer</option><option value="admin" data-icon="fa-user-shield">Admin</option></select>
         </div>
-        <div class="form-group col-md-2 mb-0">
+        <div class="form-group col-md-6 col-lg-2 mb-0">
           <button class="btn btn-primary btn-block"><i class="fas fa-plus mr-1"></i>Anlegen</button>
         </div>
       </div>
@@ -31,7 +31,7 @@
   <div class="card-header"><i class="fas fa-users mr-1"></i>{{ users|length }} Nutzer</div>
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover table-stack mb-0">
         <thead><tr><th>Name</th><th>E-Mail</th><th>Rolle</th><th></th></tr></thead>
         <tbody>
           {% for u in users %}
@@ -42,8 +42,8 @@
               </form>
               <input form="u{{ u.id }}" class="form-control form-control-sm" name="name" value="{{ u.name }}" maxlength="80" aria-label="Name" required>
             </td>
-            <td class="text-muted">{{ u.email }}</td>
-            <td>
+            <td class="text-muted" data-label="E-Mail">{{ u.email }}</td>
+            <td class="{{ 's-full' if u.id != me.id }}" data-label="Rolle">
               {% if u.id == me.id %}
               <input form="u{{ u.id }}" type="hidden" name="role" value="admin"><span class="badge badge-warning">Admin (du)</span>
               {% else %}

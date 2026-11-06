@@ -3,11 +3,11 @@ import math
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from flask import abort, flash, g, redirect, render_template, request, url_for
+from flask import abort, flash, g, jsonify, redirect, render_template, request, url_for
 
 from ...core import get_db
 from . import bp
-from .solver import EXTERNAL, ITEMS, RECIPES, SolveError, default_recipe, recipes_for, solve
+from .solver import EPS, EXTERNAL, ITEMS, RECIPES, SolveError, default_recipe, recipes_for, solve
 
 MAX_TARGETS = 30
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -90,6 +90,30 @@ def _log(plan_id, action, detail=""):
                      (plan_id, g.user["name"], action, detail))
 
 
+def _users():
+    return get_db().execute("SELECT id, name FROM users ORDER BY name COLLATE NOCASE").fetchall()
+
+
+def _progress(plan_id, steps):
+    """Stand je Schritt: {rezept: {...}}. Abgehakt zählt nur, solange die gebaute Menge noch reicht."""
+    rows = {r["recipe"]: r for r in get_db().execute(
+        "SELECT p.*, u.name AS assignee FROM plan_steps p LEFT JOIN users u ON u.id = p.assignee_id "
+        "WHERE p.plan_id = ?", (plan_id,))}
+    progress = {}
+    for s in steps:
+        row = rows.get(s["recipe"])
+        ticked = row is not None and row["done_at"] is not None
+        done = ticked and row["done_count"] >= s["count"] - EPS
+        assignee = row["assignee"] if row else None
+        by = row["done_by_name"] if ticked else None
+        progress[s["recipe"]] = {
+            "done": done, "short": ticked and not done, "by": by, "at": row["done_at"] if ticked else None,
+            "count": row["done_count"] if ticked else None, "assignee_id": row["assignee_id"] if row else None,
+            "tag": f"Erledigt: {by}" if done else f"Zuständig: {assignee}" if assignee else "",
+        }
+    return progress
+
+
 def _render(targets, choices, plan=None):
     result, error = None, None
     if targets:
@@ -97,11 +121,20 @@ def _render(targets, choices, plan=None):
             result = solve(targets, choices)
         except SolveError as exc:
             error = str(exc)
-    log = []
+    log, progress = [], {}
     if plan:
         log = get_db().execute("SELECT * FROM plan_log WHERE plan_id = ? ORDER BY id DESC", (plan["id"],)).fetchall()
+    # Abhaken geht nur auf dem gespeicherten Stand, nicht auf ungespeicherten Änderungen
+    unsaved = bool(plan) and _state(targets, choices) != _state(*_stored(plan))
+    tracking = bool(result and plan and not plan["deleted_at"] and not unsaved)
+    if tracking:
+        progress = _progress(plan["id"], result["steps"])
+        for node in result["graph"]["nodes"]:
+            if node["id"] in progress:
+                node.update(done=progress[node["id"]]["done"], tag=progress[node["id"]]["tag"])
     return render_template(
         "fabriken/calc.html", targets=targets, choices=choices, result=result, error=error, plan=plan, log=log,
+        tracking=tracking, unsaved=unsaved, progress=progress, users=_users() if tracking else [],
         ITEMS=ITEMS, RECIPES=RECIPES, ITEM_CHOICES=ITEM_CHOICES, ACTIONS=ACTIONS, EXTERNAL=EXTERNAL,
         recipes_for=recipes_for, default_recipe=default_recipe, state=_state(targets, choices),
         may_delete=plan is not None and _may_delete(plan))
@@ -144,6 +177,43 @@ def _posted():
     if not isinstance(targets, dict) or not isinstance(choices, dict):
         abort(400, "Ungültiger Plan.")
     return _clean(list(targets.items()), choices)
+
+
+def _plan_steps(plan):
+    try:
+        return solve(*_stored(plan))["steps"]
+    except SolveError:
+        return []
+
+
+@bp.post("/<int:plan_id>/step")
+def step(plan_id):
+    """Schritt abhaken (done=1/0) oder zuteilen (assignee_id). Feste Werte statt Umschalten, damit veraltete Seiten nichts verdrehen."""
+    plan = _plan_or_404(plan_id)
+    recipe = request.form.get("recipe", "")
+    steps = [] if plan["deleted_at"] else _plan_steps(plan)
+    if not any(s["recipe"] == recipe for s in steps):
+        abort(409, "Der Plan wurde geändert. Lade die Seite neu.")
+    db = get_db()
+    db.execute("INSERT OR IGNORE INTO plan_steps (plan_id, recipe) VALUES (?, ?)", (plan_id, recipe))
+    if "assignee_id" in request.form:
+        assignee = {str(u["id"]): u["id"] for u in _users()}.get(request.form["assignee_id"])
+        db.execute("UPDATE plan_steps SET assignee_id=? WHERE plan_id=? AND recipe=?", (assignee, plan_id, recipe))
+    done = request.form.get("done")
+    if done == "1" and not _progress(plan_id, steps)[recipe]["done"]:
+        count = next(s["count"] for s in steps if s["recipe"] == recipe)
+        db.execute("UPDATE plan_steps SET done_by_name=?, done_at=datetime('now'), done_count=? WHERE plan_id=? AND recipe=?",
+                   (g.user["name"], count, plan_id, recipe))
+    elif done == "0":
+        db.execute("UPDATE plan_steps SET done_by_name=NULL, done_at=NULL, done_count=NULL WHERE plan_id=? AND recipe=?",
+                   (plan_id, recipe))
+    db.commit()
+    if "application/json" not in request.headers.get("Accept", ""):
+        return redirect(url_for("fabriken.show", plan_id=plan_id) + "#kette")
+    progress = _progress(plan_id, steps)
+    p = progress[recipe]
+    return jsonify(done=p["done"], tag=p["tag"], finished=sum(x["done"] for x in progress.values()),
+                   html=render_template("fabriken/_step.html", plan=plan, recipe=recipe, p=p))
 
 
 @bp.post("/save")

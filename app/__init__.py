@@ -1,9 +1,10 @@
+import hashlib
 import importlib
 import os
 import pkgutil
 import secrets
 
-from flask import Flask, abort, g, render_template, request
+from flask import Flask, abort, g, jsonify, render_template, request
 
 from . import core, modules as modules_pkg
 
@@ -17,6 +18,10 @@ def _secret_key() -> str:
         f.write_text(secrets.token_hex(32))
         f.chmod(0o600)
     return f.read_text().strip()
+
+
+# Nur diese Module darf das Sync-Skript mit seinem Schlüssel aufrufen
+TOKEN_MODULES = ("blueprints", "karte")
 
 
 def create_app() -> Flask:
@@ -49,6 +54,16 @@ def create_app() -> Flask:
     def authenticate():
         if request.endpoint in ("healthz", "static"):
             return None
+        token = request.headers.get("X-Satis-Token")
+        if token:  # lokales Sync-Skript: Schlüssel statt Browser-Login, darum auch kein CSRF
+            if request.blueprint not in TOKEN_MODULES:
+                abort(403)
+            user = core.user_from_token(token)
+            if not user:
+                return jsonify(error="Sync-Schlüssel ungültig. Erstell auf der Blueprint-Seite einen neuen."), 401
+            g.user = user
+            g.via_token = True
+            return None
         user, state = core.resolve_user()
         if state != "ok":
             return render_template("denied.html", state=state, email=core.identity_email()), 403
@@ -58,12 +73,35 @@ def create_app() -> Flask:
             abort(403)
         core.check_csrf()
 
+    @app.after_request
+    def announce(response):
+        # Jede geglückte Änderung zählt hoch, damit die Seiten der anderen nachladen
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and response.status_code < 400 and g.get("user"):
+            core.bump_live()
+        return response
+
+    @app.get("/live")
+    def live():
+        response = jsonify(rev=core.live_rev())
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    # Ändern sich Skripte oder Styles (neues Update), lädt satis.js beim nächsten Seitenwechsel einmal richtig neu
+    static = os.path.join(app.root_path, "static")
+    digest = hashlib.sha1()
+    for f in sorted(os.listdir(static)):
+        if f.endswith((".js", ".css")):
+            with open(os.path.join(static, f), "rb") as fh:
+                digest.update(fh.read())
+    asset_version = digest.hexdigest()[:12]
+
     @app.context_processor
     def inject():
         user = g.get("user")
         nav = [m for m in core.MODULES
                if m.show_in_nav and (not m.admin_only or (user and user["role"] == "admin"))]
-        return {"nav_modules": nav, "me": user, "csrf_token": core.csrf_token}
+        return {"nav_modules": nav, "me": user, "csrf_token": core.csrf_token, "live_rev": core.live_rev,
+                "asset_version": asset_version}
 
     @app.get("/")
     def home():

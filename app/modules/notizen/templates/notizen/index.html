@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Notizen{% endblock %}
+{% block actions %}
+<form method="post" action="{{ url_for('notizen.new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if f_cat %}<input type="hidden" name="category" value="{{ f_cat }}">{% endif %}
+  <button class="btn btn-sm btn-warning text-secondary font-weight-bold"><i class="fas fa-plus mr-1"></i>Neue Notiz</button>
+</form>
+{% endblock %}
+{% macro post(endpoint, note_id, icon, title, extra={}, confirm=None) %}
+<form method="post" action="{{ url_for(endpoint, note_id=note_id) }}"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for k, v in extra.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <button class="btn btn-sm btn-link px-1" title="{{ title }}" aria-label="{{ title }}"><i class="fas {{ icon }}"></i></button>
+</form>
+{% endmacro %}
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap align-items-center s-note-bar">
+    <form class="form-inline flex-wrap" method="get">
+      {% if f_cat %}<input type="hidden" name="cat" value="{{ f_cat }}">{% endif %}
+      <label class="mr-2" for="view"><i class="fas fa-eye mr-1"></i>Zeigen</label>
+      <select id="view" name="view" class="form-control form-control-sm mr-3" onchange="this.form.requestSubmit()">
+        <option value="">Alle</option>
+        <option value="mine" data-icon="fa-user" {{ 'selected' if f_view == 'mine' }}>Nur meine</option>
+        <option value="shared" data-icon="fa-share-alt" {{ 'selected' if f_view == 'shared' }}>Mit mir geteilt</option>
+      </select>
+      <label class="mr-2" for="sort"><i class="fas fa-sort mr-1"></i>Sortieren</label>
+      <select id="sort" name="sort" class="form-control form-control-sm" onchange="this.form.requestSubmit()">
+        {% for k, v in SORTS.items() %}<option value="{{ k }}" {{ 'selected' if f_sort == k }}>{{ v }}</option>{% endfor %}
+      </select>
+      <noscript><button class="btn btn-sm btn-secondary ml-2">OK</button></noscript>
+    </form>
+    {% if cats %}
+    <div class="s-note-cats">
+      <a class="badge badge-pill {{ 'badge-warning' if not f_cat else 'badge-secondary' }}" href="{{ url_for('notizen.index', sort=f_sort, view=f_view or None) }}">Alle</a>
+      {% for c in cats %}<a class="badge badge-pill {{ 'badge-warning' if f_cat == c else 'badge-secondary' }}" href="{{ url_for('notizen.index', cat=c, sort=f_sort, view=f_view or None) }}">{{ c }}</a>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+<div data-live="notes">
+{% if notes %}
+<div class="s-notes">
+  {% for n in notes %}
+  {% set mine = n.owner_id == me.id %}
+  {% set editable = mine or n.shared_edit %}
+  <div class="card s-note {{ 's-note-pinned' if n.pinned }}">
+    <div class="card-header d-flex align-items-center py-1 px-2">
+      <span class="small text-muted flex-grow-1 text-truncate">
+        {% if n.pinned %}<i class="fas fa-thumbtack mr-1 text-warning"></i>{% endif %}
+        {% if not mine %}<i class="fas fa-share-alt mr-1"></i>von {{ n.owner_name }}{% if not n.shared_edit %} · nur lesen{% endif %}
+        {% elif n.shared_with %}<i class="fas fa-users mr-1"></i>{{ n.shared_with }}
+        {% else %}<i class="fas fa-lock mr-1"></i>Nur für dich{% endif %}
+      </span>
+      <span class="d-flex s-note-tools">
+        {% if mine %}
+          {% if f_sort == 'manual' %}
+          {{ post('notizen.move', n.id, 'fa-arrow-up', 'Nach vorn', {'dir': 'up'}) }}
+          {{ post('notizen.move', n.id, 'fa-arrow-down', 'Nach hinten', {'dir': 'down'}) }}
+          {% endif %}
+          {{ post('notizen.pin', n.id, 'fa-thumbtack', 'Lösen' if n.pinned else 'Anheften') }}
+          <a class="btn btn-sm btn-link px-1" href="{{ url_for('notizen.share', note_id=n.id) }}" title="Freigeben" aria-label="Freigeben"><i class="fas fa-share-alt"></i></a>
+          {{ post('notizen.delete', n.id, 'fa-trash-alt', 'Löschen', confirm='Notiz löschen?') }}
+        {% else %}
+          {{ post('notizen.leave', n.id, 'fa-times', 'Aus meiner Liste entfernen', confirm='Notiz aus deiner Liste entfernen?') }}
+        {% endif %}
+      </span>
+    </div>
+    {% if editable %}
+    <form class="card-body p-2 s-note-form" method="post" action="{{ url_for('notizen.save', note_id=n.id) }}" data-note>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input class="form-control form-control-sm font-weight-bold mb-1 s-note-title" name="title" value="{{ n.title }}" maxlength="200" placeholder="Titel" aria-label="Titel">
+      <textarea class="form-control form-control-sm s-note-body" name="body" rows="6" maxlength="50000" placeholder="Notiz … Rechnen: 4*5= tippen" aria-label="Notiz">{{ n.body }}</textarea>
+      <div class="d-flex align-items-center mt-1">
+        <i class="fas fa-tag mr-1 small text-muted"></i>
+        <input class="form-control form-control-sm s-note-cat" name="category" value="{{ n.category }}" maxlength="60" placeholder="Kategorie" aria-label="Kategorie" list="note-cats">
+        <span class="small text-muted ml-2 text-nowrap" data-note-state></span>
+        <noscript><button class="btn btn-sm btn-secondary ml-2">Speichern</button></noscript>
+      </div>
+    </form>
+    {% else %}
+    <div class="card-body p-2">
+      {% if n.title %}<div class="font-weight-bold mb-1">{{ n.title }}</div>{% endif %}
+      <div class="s-note-read">{{ n.body }}</div>
+      {% if n.category %}<div class="small text-muted mt-1"><i class="fas fa-tag mr-1"></i>{{ n.category }}</div>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+<datalist id="note-cats">{% for c in cats %}<option value="{{ c }}">{% endfor %}</datalist>
+{% else %}
+<p class="text-muted text-center py-5 mb-0"><i class="fas fa-sticky-note fa-2x d-block mb-2"></i>Noch keine Notizen. Leg oben mit „Neue Notiz“ los.</p>
+{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='notizen.js') }}"></script>
+{% endblock %}
