@@ -97,7 +97,13 @@ for (const level of Object.values(save.levels)) {
       continue;
     }
     if (cls === 'Char_Player_C') {
-      players.push({ name: value(obj, 'mCachedPlayerName') || '', x: round(t.x), y: round(t.y), z: round(t.z) });
+      players.push({
+        name: value(obj, 'mCachedPlayerName') || '',
+        x: round(t.x),
+        y: round(t.y),
+        z: round(t.z),
+        yaw: yaw(q),
+      });
       continue;
     }
     if (sp?.type === 'PowerLineSpecialProperties') {

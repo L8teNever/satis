@@ -41,7 +41,7 @@ LAYERS = [
     ("generators", "Kraftwerke", "Strom", "#00bc8c", "rect", True, (2000, 1000)),
     ("power_poles", "Strommasten", "Strom", "#70d0b0", "rect", True, (120, 120)),
     ("wires", "Stromkabel", "Strom", "#3a8f78", "line", False, None),
-    ("players", "Spieler", "Welt", "#ffffff", "dot", True, None),
+    ("players", "Spieler", "Welt", "#00d2ff", "player", True, None),
     ("drop_closed", "Drop Pods, zu", "Welt", "#ff5050", "dot", True, None),
     ("drop_open", "Drop Pods, offen", "Welt", "#885050", "dot", False, None),
     ("somersloops", "Somersloops", "Welt", "#d040d0", "dot", False, None),
@@ -155,8 +155,10 @@ def build(raw, by=""):
             counts[layer] += len(lines)
     items["wires"] = [[w[0], w[1], w[3], w[4]] for w in raw["wires"]]
     counts["wires"] = len(raw["wires"])
-    for p in raw["players"]:
-        items["players"] += [p["x"], p["y"], label(p["name"] or "Spieler")]
+    for idx, p in enumerate(raw["players"]):
+        name = p.get("name") or (f"Spieler {idx + 1}" if len(raw["players"]) > 1 else "Spieler")
+        yaw = p.get("yaw", 0)
+        items["players"] += [p["x"], p["y"], yaw, label(name)]
         counts["players"] += 1
 
     layers = [{"id": i, "label": name, "group": group, "color": color, "kind": kind, "on": on,

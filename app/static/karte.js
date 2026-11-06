@@ -12,9 +12,11 @@
     const panel = root.querySelector(".s-map-layers");
     const info = root.querySelector(".s-map-info");
     const status = document.getElementById("s-map-status");
-    const STRIDE = { rect: 6, dot: 3, node: 5 };
+    const DEFAULT_BOUNDS = { x: -324698.832031, y: -375000.0, size: 750000.0 };
+    const STRIDE = { rect: 6, dot: 3, node: 5, player: 4 };
     const STORE = "satis.karte.ebenen";
     const PURITIES = [[2, "Rein"], [1, "Normal"], [0.5, "Unrein"]];
+    const PLAYER_COLORS = ["#00d2ff", "#2ecc71", "#f39c12", "#e74c3c", "#9b59b6", "#1abc9c", "#f1c40f"];
 
     let world = null;
     let image = null;
@@ -35,14 +37,15 @@
 
     function fit() {
       const { w, h } = size();
-      const b = world.bounds;
+      const b = world ? world.bounds : DEFAULT_BOUNDS;
       view = { x: b.x + b.size / 2, y: b.y + b.size / 2, s: Math.min(w, h) / b.size };
       redraw();
     }
 
     function zoom(factor, px, py) {
       const { w, h } = size();
-      const s = Math.min(0.5, Math.max(world ? Math.min(w, h) / world.bounds.size / 2 : 1e-4, view.s * factor));
+      const b = world ? world.bounds : DEFAULT_BOUNDS;
+      const s = Math.min(0.5, Math.max(Math.min(w, h) / b.size / 2, view.s * factor));
       view.x += (px - w / 2) / view.s - (px - w / 2) / s;
       view.y += (py - h / 2) / view.s - (py - h / 2) / s;
       view.s = s;
@@ -100,7 +103,6 @@
 
     function drawDots(l, sx, sy) {
       const it = l.items;
-      ctx.font = "12px Lato, sans-serif";
       ctx.lineWidth = 1;
       for (let i = 0; i < it.length; i += 3) {
         const x = sx(it[i]), y = sy(it[i + 1]);
@@ -110,10 +112,92 @@
         ctx.strokeStyle = "#000";
         ctx.fill();
         ctx.stroke();
-        if (l.id === "players") {
-          ctx.fillStyle = "#fff";
-          ctx.fillText(world.labels[it[i + 2]], x + 7, y + 4);
+      }
+    }
+
+    function drawPlayers(l, sx, sy, w, h) {
+      const it = l.items;
+      const hasYaw = it.length % 4 === 0;
+      const stride = hasYaw ? 4 : 3;
+
+      for (let i = 0, pIdx = 0; i < it.length; i += stride, pIdx++) {
+        const px = sx(it[i]), py = sy(it[i + 1]);
+        if (px < -60 || py < -60 || px > w + 60 || py > h + 60) continue;
+        const yawDeg = hasYaw ? it[i + 2] : 0;
+        const a = (yawDeg * Math.PI) / 180;
+        const labelIdx = hasYaw ? it[i + 3] : it[i + 2];
+        const name = (world && world.labels && world.labels[labelIdx]) || "Spieler";
+        const color = PLAYER_COLORS[pIdx % PLAYER_COLORS.length];
+
+        ctx.save();
+        ctx.translate(px, py);
+
+        // 1. Blickfeld-Kegel (Sichtrichtung / FOV)
+        const coneDist = 34;
+        const fov = 0.52;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, coneDist, a - fov, a + fov);
+        ctx.closePath();
+        const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, coneDist);
+        grad.addColorStop(0, color + "77");
+        grad.addColorStop(1, color + "00");
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // 2. Richtungspfeil / Ausrichtung
+        const tipDist = 17;
+        const wingDist = 11;
+        const wingAngle = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * tipDist, Math.sin(a) * tipDist);
+        ctx.lineTo(Math.cos(a + wingAngle) * wingDist, Math.sin(a + wingAngle) * wingDist);
+        ctx.lineTo(Math.cos(a + Math.PI) * 4, Math.sin(a + Math.PI) * 4);
+        ctx.lineTo(Math.cos(a - wingAngle) * wingDist, Math.sin(a - wingAngle) * wingDist);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        ctx.fill();
+        ctx.stroke();
+
+        // 3. Spieler-Positionspunkt
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        // 4. Name mit Hintergrund-Badge
+        ctx.font = "bold 12px Lato, sans-serif";
+        const tw = ctx.measureText(name).width;
+        const bw = tw + 14;
+        const bh = 20;
+        const bx = -bw / 2;
+        const by = -28;
+
+        ctx.fillStyle = "rgba(16, 24, 32, 0.88)";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        if (ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(bx, by, bw, bh, 4);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.fillRect(bx, by, bw, bh);
+          ctx.strokeRect(bx, by, bw, bh);
         }
+
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(name, 0, by + bh / 2);
+
+        ctx.restore();
       }
     }
 
@@ -127,15 +211,20 @@
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.fillStyle = "#1b2a33";
       ctx.fillRect(0, 0, w, h);
-      if (!world) return;
+
+      const b = world ? world.bounds : DEFAULT_BOUNDS;
       const sx = (x) => (x - view.x) * view.s + w / 2;
       const sy = (y) => (y - view.y) * view.s + h / 2;
-      const b = world.bounds;
       if (image) ctx.drawImage(image, sx(b.x), sy(b.y), b.size * view.s, b.size * view.s);
-      const painters = { rect: drawRects, line: drawLines, node: drawNodes, dot: drawDots };
-      const order = { rect: 0, line: 1, node: 2, dot: 3 };
+
+      if (!world) return;
+      const painters = { rect: drawRects, line: drawLines, node: drawNodes, dot: drawDots, player: drawPlayers };
+      const order = { rect: 0, line: 1, node: 2, dot: 3, player: 4 };
       [...world.layers].sort((a, c) => order[a.kind] - order[c.kind]).forEach((l) => {
-        if (shown(l)) painters[l.kind](l, sx, sy, w, h);
+        if (shown(l)) {
+          if (l.id === "players") drawPlayers(l, sx, sy, w, h);
+          else if (painters[l.kind]) painters[l.kind](l, sx, sy, w, h);
+        }
       });
     }
 
@@ -154,7 +243,8 @@
       let best = "", score = Infinity;
       for (const l of world.layers) {
         if (!shown(l)) continue;
-        const rank = { node: 0, dot: 0, rect: 1, line: 2 }[l.kind] * reach;
+        const isPlayer = l.id === "players" || l.kind === "player";
+        const rank = (isPlayer ? 0 : { node: 0, dot: 0, rect: 1, line: 2 }[l.kind]) * reach;
         if (l.kind === "line") {
           for (const line of l.items) {
             for (let i = 2; i < line.length; i += 2) {
@@ -164,11 +254,13 @@
           }
           continue;
         }
-        const step = STRIDE[l.kind], it = l.items;
-        const at = l.kind === "rect" ? 5 : 2;
+        const playerStride = isPlayer && (l.items.length % 4 === 0) ? 4 : 3;
+        const step = isPlayer ? playerStride : STRIDE[l.kind];
+        const it = l.items;
+        const at = l.kind === "rect" ? 5 : isPlayer ? playerStride - 1 : 2;
         for (let i = 0; i < it.length; i += step) {
           if (l.kind === "node" && !visibleNode(it, i)) continue;
-          const pad = l.kind === "rect" ? Math.max(it[i + 3], it[i + 4]) / 2 : 0;
+          const pad = l.kind === "rect" ? Math.max(it[i + 3], it[i + 4]) / 2 : isPlayer ? 18 / view.s : 0;
           const d = Math.max(0, Math.hypot(it[i] - wx, it[i + 1] - wy) - pad);
           if (d < reach && d + rank < score) { score = d + rank; best = world.labels[it[i + at]]; }
         }
@@ -344,7 +436,7 @@
     });
     root.querySelector("[data-map-zoom-in]").addEventListener("click", () => { const { w, h } = size(); zoom(1.5, w / 2, h / 2); });
     root.querySelector("[data-map-zoom-out]").addEventListener("click", () => { const { w, h } = size(); zoom(1 / 1.5, w / 2, h / 2); });
-    root.querySelector("[data-map-fit]").addEventListener("click", () => { if (world) fit(); });
+    root.querySelector("[data-map-fit]").addEventListener("click", () => { fit(); });
     root.querySelector("[data-map-full]").addEventListener("click", () => { root.classList.toggle("s-map-full"); });
     root.querySelector("[data-map-panel]").addEventListener("click", () => { panel.hidden = !panel.hidden; });
 
@@ -353,6 +445,7 @@
       if (started) return;
       started = true;
       if (window.innerWidth < 768) panel.hidden = true; // Am Handy bleibt die Karte frei, die Ebenen klappt man auf
+      fit();
       const img = new Image();
       img.onload = () => { image = img; redraw(); };
       img.src = root.dataset.image;

@@ -99,10 +99,17 @@ def world():
     return send_file(path, mimetype="application/json", max_age=0)
 
 
+MAP_URL = "https://raw.githubusercontent.com/Fade97/satisfactory-logistics-map/main/frontend/public/map.jpg"
+
+
 @bp.get("/bild")
 def image():
-    """Das Kartenbild gehört Coffee Stain und liegt deshalb nur im Datenordner, nicht im Repo."""
+    """Das Kartenbild gehört Coffee Stain und liegt im Datenordner. Fehlt es, wird es einmalig geladen."""
     path = _dir() / "map.jpg"
     if not path.exists():
-        abort(404)
+        try:
+            import urllib.request
+            urllib.request.urlretrieve(MAP_URL, path)
+        except Exception:
+            abort(404)
     return send_file(path, mimetype="image/jpeg", max_age=86400)
