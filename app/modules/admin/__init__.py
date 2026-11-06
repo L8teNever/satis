@@ -9,7 +9,7 @@ from . import routes  # noqa: E402,F401
 module = Module(
     name="admin",
     label="Nutzer",
-    icon="⚙",
+    icon="fa-users-cog",
     order=900,
     admin_only=True,
     blueprint=bp,

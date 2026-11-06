@@ -1,0 +1,4 @@
+{% macro status_options(STATUS, current) %}
+{% set icons = {"open": "fa-circle-notch", "doing": "fa-cogs", "done": "fa-check"} %}
+{% for k, v in STATUS.items() %}<option value="{{ k }}" data-icon="{{ icons[k] }}" {{ 'selected' if current == k }}>{{ v }}</option>{% endfor %}
+{% endmacro %}

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}{{ plan.name if plan else 'Rechner' }}{% endblock %}
+{% macro recipe_select(item, tab) %}
+{% set options = recipes_for(item) %}
+{% if options %}
+<select form="calc" name="recipe" class="form-control form-control-sm" data-search aria-label="Rezept für {{ ITEMS[item].name }}" onchange="this.form.action='#{{ tab }}';this.form.submit()">
+  {% set current = choices.get(item) or default_recipe(item) %}
+  {% for cls in options %}<option value="{{ item }}|{{ cls }}" data-icon="{{ 'fa-star' if RECIPES[cls].alternate else 'fa-cog' }}" {{ 'selected' if current == cls }}>{{ RECIPES[cls].name }}</option>{% endfor %}
+  <option value="{{ item }}|{{ EXTERNAL }}" data-icon="fa-truck" {{ 'selected' if not current or current == EXTERNAL }}>Anliefern</option>
+</select>
+{% endif %}
+{% endmacro %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-8 mb-3">
+    {% if error %}<div class="alert alert-danger"><i class="fas fa-exclamation-triangle mr-1"></i>{{ error }}</div>{% endif %}
+    {% if plan and plan.deleted_at %}<div class="alert alert-warning"><i class="fas fa-trash-alt mr-1"></i>Gelöscht von {{ plan.deleted_by_name }} am {{ plan.deleted_at|when }}.</div>{% endif %}
+    <div class="card">
+      <div class="card-header">
+        <ul class="nav nav-tabs nav-fill card-header-tabs">
+          <li class="nav-item"><a class="nav-link active" href="#graph" data-toggle="tab"><i class="fas fa-sitemap"></i>&nbsp; Graph</a></li>
+          <li class="nav-item"><a class="nav-link" href="#kette" data-toggle="tab"><i class="fas fa-list"></i>&nbsp; Produktion</a></li>
+          <li class="nav-item"><a class="nav-link" href="#items" data-toggle="tab"><i class="fas fa-tools"></i>&nbsp; Items</a></li>
+          <li class="nav-item"><a class="nav-link" href="#gebaeude" data-toggle="tab"><i class="fas fa-industry"></i>&nbsp; Gebäude</a></li>
+        </ul>
+      </div>
+      <div class="card-body p-0">
+        {% if result %}
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="graph">
+            <div class="s-graph" data-graph='{{ result.graph|tojson }}'></div>
+          </div>
+          <div class="tab-pane fade" id="kette">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead><tr><th>Rezept</th><th>Gebäude</th><th>Rein / min</th><th>Raus / min</th><th class="text-right">Strom</th></tr></thead>
+                <tbody>
+                  {% for s in result.steps %}
+                  <tr>
+                    <td class="s-recipe">{{ recipe_select(s.item, 'kette') }}</td>
+                    <td class="text-nowrap"><strong>{{ s.count|num }}×</strong> {{ s.building }}</td>
+                    <td class="small">{% for x in s.inputs %}<div class="text-nowrap">{{ x.rate|num }} {{ x.name }}</div>{% endfor %}</td>
+                    <td class="small">{% for x in s.outputs %}<div class="text-nowrap">{{ x.rate|num }} {{ x.name }}</div>{% endfor %}</td>
+                    <td class="text-right text-nowrap">{{ s.power|num }} MW</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="tab-pane fade" id="items">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead><tr><th>Item</th><th class="text-right">Pro Minute</th><th>Herkunft</th></tr></thead>
+                <tbody>
+                  <tr class="table-active"><th colspan="3"><i class="fas fa-truck mr-1"></i>Rohstoffe und Anlieferung</th></tr>
+                  {% for x in result.raw %}
+                  <tr><td>{{ x.name }}</td><td class="text-right text-nowrap">{{ x.rate|num }}{{ ' m³' if x.liquid }}</td><td class="s-recipe">{{ recipe_select(x.item, 'items') }}</td></tr>
+                  {% endfor %}
+                  {% if result.surplus %}
+                  <tr class="table-active"><th colspan="3"><i class="fas fa-exclamation-triangle text-warning mr-1"></i>Überschuss, muss weg oder die Fabrik staut sich</th></tr>
+                  {% for x in result.surplus %}
+                  <tr><td>{{ x.name }}</td><td class="text-right text-nowrap">{{ x.rate|num }}{{ ' m³' if x.liquid }}</td><td></td></tr>
+                  {% endfor %}
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="tab-pane fade" id="gebaeude">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead><tr><th>Gebäude</th><th class="text-right">Anzahl</th><th class="text-right">Strom</th></tr></thead>
+                <tbody>
+                  {% for b in result.buildings %}
+                  <tr><td>{{ b.name }}</td><td class="text-right">{{ b.count }}</td><td class="text-right text-nowrap">{{ b.power|num }} MW</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <p class="text-muted text-center py-5 mb-0"><i class="fas fa-calculator fa-2x d-block mb-2"></i>Wähl rechts aus, was produziert werden soll.</p>
+        {% endif %}
+      </div>
+      <div class="card-footer text-right"><i class="fas fa-bolt"></i> Strom für diese Produktion: <strong>{{ (result.power if result else 0)|num }} MW</strong></div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header"><i class="fas fa-bullseye mr-1"></i>Was soll produziert werden?</div>
+      <div class="card-body">
+        <form id="calc" method="get">
+          {% macro row(item, rate, index) %}
+          <div class="form-row mb-2">
+            <div class="col">
+              <select name="item" class="form-control form-control-sm" data-search aria-label="Item" onchange="this.form.submit()">
+                <option value="">Item wählen</option>
+                {% for k, name in ITEM_CHOICES %}<option value="{{ k }}" {{ 'selected' if k == item }}>{{ name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-3"><input class="form-control form-control-sm" name="rate" inputmode="decimal" value="{{ ('%.4f'|format(rate)).rstrip('0').rstrip('.') if rate }}" aria-label="Pro Minute" placeholder="/min"></div>
+            <div class="col-auto">{% if item %}<button class="btn btn-sm btn-secondary" name="remove" value="{{ index }}" title="Entfernen" aria-label="Entfernen"><i class="fas fa-times"></i></button>{% else %}<span class="btn btn-sm invisible"><i class="fas fa-times"></i></span>{% endif %}</div>
+          </div>
+          {% endmacro %}
+          {% for item, rate in targets.items() %}{{ row(item, rate, loop.index0) }}{% endfor %}
+          {{ row('', None, targets|length) }}
+          <button class="btn btn-primary btn-block mt-3"><i class="fas fa-calculator mr-1"></i>Berechnen</button>
+        </form>
+      </div>
+    </div>
+
+    {% if targets and not (plan and plan.deleted_at) %}
+    <div class="card mb-3">
+      <div class="card-header"><i class="fas fa-save mr-1"></i>{{ 'Plan speichern' if plan else 'Als Plan speichern' }}</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('fabriken.update', plan_id=plan.id) if plan else url_for('fabriken.save') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="state" value="{{ state }}">
+          <div class="form-group">
+            <label for="plan-name">Name</label>
+            <input id="plan-name" class="form-control" name="name" maxlength="120" value="{{ plan.name if plan }}" required>
+          </div>
+          <button class="btn btn-primary btn-block"><i class="fas fa-save mr-1"></i>Speichern</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if plan %}
+    <div class="card mb-3">
+      <div class="card-header"><i class="fas fa-history mr-1"></i>Verlauf</div>
+      <ul class="list-group list-group-flush">
+        {% for e in log %}
+        <li class="list-group-item">
+          <i class="fas {{ ACTIONS[e.action][0] }} mr-1"></i><strong>{{ e.user_name }}</strong> hat den Plan {{ ACTIONS[e.action][1] }}
+          <div class="small text-muted">{{ e.at|when }}{% if e.detail %} · {{ e.detail }}{% endif %}</div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if may_delete %}
+      <div class="card-footer text-right">
+        {% if plan.deleted_at %}
+        <form method="post" action="{{ url_for('fabriken.restore', plan_id=plan.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-primary"><i class="fas fa-undo mr-1"></i>Wiederherstellen</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('fabriken.delete', plan_id=plan.id) }}" data-confirm="Plan löschen?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-danger"><i class="fas fa-trash-alt mr-1"></i>Löschen</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/cytoscape.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/dagre.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/cytoscape-dagre.js') }}"></script>
+<script src="{{ url_for('static', filename='fabriken.js') }}"></script>
+{% endblock %}

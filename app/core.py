@@ -19,7 +19,7 @@ class Module:
     name: str                      # URL-Präfix + interner Name, z. B. "tasks"
     label: str                     # Anzeige im Menü
     blueprint: object              # Flask-Blueprint
-    icon: str = "▣"
+    icon: str = "fa-cube"          # Font-Awesome-Klasse (Solid, Free)
     order: int = 100               # Sortierung im Menü
     admin_only: bool = False       # nur für Admins sichtbar/nutzbar
     schema: str = ""               # SQL (CREATE TABLE IF NOT EXISTS ...)

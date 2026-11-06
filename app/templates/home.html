@@ -1,13 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Übersicht{% endblock %}
 {% block content %}
-<div class="grid">
+<div class="row">
   {% for m in cards %}
-  <a class="card tile" href="{{ url_for(m.endpoint) }}">
-    <span class="tile-ico">{{ m.icon }}</span>
-    <h2>{{ m.label }}</h2>
-    <p>{{ m.description }}</p>
-  </a>
+  <div class="col-sm-6 col-lg-4 col-xl-3 mb-3">
+    <a class="card tile h-100 text-center" href="{{ url_for(m.endpoint) }}">
+      <div class="card-body">
+        <i class="fas {{ m.icon }} fa-3x text-warning mb-3"></i>
+        <h5 class="card-title">{{ m.label }}</h5>
+        <p class="card-text text-muted">{{ m.description }}</p>
+      </div>
+    </a>
+  </div>
   {% endfor %}
 </div>
 {% endblock %}

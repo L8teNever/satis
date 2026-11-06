@@ -1,44 +1,54 @@
 {% extends "base.html" %}
+{% from "tasks/_options.html" import status_options %}
 {% block title %}{{ 'Aufgabe bearbeiten' if t else 'Neue Aufgabe' }}{% endblock %}
 {% block content %}
-<section class="card narrow">
-  <div class="card-body">
-    <form class="stack" method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label>Titel
-        <input name="title" value="{{ t.title if t }}" maxlength="200" required autofocus>
-      </label>
-      <label>Beschreibung
-        <textarea name="description" rows="5" maxlength="5000">{{ t.description if t }}</textarea>
-      </label>
-      <div class="row">
-        <label>Zuständig
-          <select name="assignee_id">
-            <option value="">Niemand</option>
-            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if t and t.assignee_id == u.id }}>{{ u.name }}</option>{% endfor %}
-          </select>
-        </label>
-        <label>Priorität
-          <select name="priority">
-            {% for k, v in PRIORITY.items() %}<option value="{{ k }}" {{ 'selected' if (t.priority if t else 2) == k }}>{{ v }}</option>{% endfor %}
-          </select>
-        </label>
-      </div>
-      <div class="row">
-        <label>Status
-          <select name="status">
-            {% for k, v in STATUS.items() %}<option value="{{ k }}" {{ 'selected' if (t.status if t else 'open') == k }}>{{ v }}</option>{% endfor %}
-          </select>
-        </label>
-        <label>Fällig
-          <input type="date" name="due" value="{{ t.due if t and t.due }}">
-        </label>
-      </div>
-      <div class="form-actions">
-        <button class="btn btn-primary">Speichern</button>
-        <a class="btn" href="{{ url_for('tasks.index') }}">Abbrechen</a>
-      </div>
-    </form>
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header"><i class="fas {{ 'fa-edit' if t else 'fa-plus' }} mr-1"></i>{{ 'Aufgabe bearbeiten' if t else 'Neue Aufgabe' }}</div>
+      <form method="post">
+        <div class="card-body">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-group">
+            <label for="title">Titel</label>
+            <input id="title" class="form-control" name="title" value="{{ t.title if t }}" maxlength="200" required autofocus>
+          </div>
+          <div class="form-group">
+            <label for="description">Beschreibung</label>
+            <textarea id="description" class="form-control" name="description" rows="5" maxlength="5000">{{ t.description if t }}</textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group col-md-6">
+              <label for="assignee_id">Zuständig</label>
+              <select id="assignee_id" class="form-control" name="assignee_id">
+                <option value="">Niemand</option>
+                {% for u in users %}<option value="{{ u.id }}" data-icon="fa-hard-hat" {{ 'selected' if t and t.assignee_id == u.id }}>{{ u.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="form-group col-md-6">
+              <label for="priority">Priorität</label>
+              <select id="priority" class="form-control" name="priority">
+                {% for k, v in PRIORITY.items() %}<option value="{{ k }}" {{ 'selected' if (t.priority if t else 2) == k }}>{{ v }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group col-md-6 mb-md-0">
+              <label for="status">Status</label>
+              <select id="status" class="form-control" name="status">{{ status_options(STATUS, t.status if t else 'open') }}</select>
+            </div>
+            <div class="form-group col-md-6 mb-0">
+              <label for="due">Fällig</label>
+              <input id="due" class="form-control" type="date" name="due" value="{{ t.due if t and t.due }}">
+            </div>
+          </div>
+        </div>
+        <div class="card-footer text-right">
+          <a class="btn btn-secondary" href="{{ url_for('tasks.index') }}">Abbrechen</a>
+          <button class="btn btn-primary"><i class="fas fa-save mr-1"></i>Speichern</button>
+        </div>
+      </form>
+    </div>
   </div>
-</section>
+</div>
 {% endblock %}

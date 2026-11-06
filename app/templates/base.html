@@ -1,35 +1,73 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" class="h-100">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <title>{% block title %}Satis{% endblock %} · Satis</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-darkly.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/solid.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='satis.css') }}">
 </head>
-<body>
-  <aside class="sidebar">
-    <a class="brand" href="{{ url_for('home') if me else '#' }}"><span class="brand-mark">S</span>Satis</a>
-    {% if me %}
-    <nav>
-      <a href="{{ url_for('home') }}" class="{{ 'active' if request.endpoint == 'home' }}"><span class="ico">⌂</span>Übersicht</a>
-      {% for m in nav_modules %}
-      <a href="{{ url_for(m.endpoint) }}" class="{{ 'active' if request.blueprint == m.blueprint.name }}"><span class="ico">{{ m.icon }}</span>{{ m.label }}</a>
-      {% endfor %}
+<body class="d-flex flex-column h-100">
+  {% set cur = nav_modules | selectattr('blueprint.name', 'eq', request.blueprint) | first %}
+  <header class="sticky-top">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+      <a class="navbar-brand" href="{{ url_for('home') if me else '#' }}"><i class="fas fa-industry text-warning mr-2"></i>SATIS</a>
+      {% if me %}
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Menü">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="mainNav">
+        <ul class="navbar-nav mr-auto">
+          <li class="nav-item {{ 'active' if request.endpoint == 'home' }}">
+            <a class="nav-link" href="{{ url_for('home') }}"><i class="fas fa-home mr-1"></i>Übersicht</a>
+          </li>
+          {% for m in nav_modules %}
+          <li class="nav-item {{ 'active' if request.blueprint == m.blueprint.name }}">
+            <a class="nav-link" href="{{ url_for(m.endpoint) }}"><i class="fas {{ m.icon }} mr-1"></i>{{ m.label }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+        <ul class="navbar-nav">
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false"><i class="fas fa-user mr-1"></i>{{ me.name }}</a>
+            <div class="dropdown-menu dropdown-menu-right">
+              <h6 class="dropdown-header">{{ me.email }}</h6>
+              <a class="dropdown-item" href="/cdn-cgi/access/logout"><i class="fas fa-sign-out-alt mr-1"></i>Abmelden</a>
+            </div>
+          </li>
+        </ul>
+      </div>
+      {% endif %}
     </nav>
-    <div class="whoami">
-      <strong>{{ me.name }}</strong>
-      <small>{{ me.email }}</small>
-      <a href="/cdn-cgi/access/logout">Abmelden</a>
+  </header>
+
+  <main role="main" class="py-3 flex-fill">
+    <div class="container-fluid">
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+          {% if me and request.endpoint != 'home' %}
+          <li class="breadcrumb-item"><a href="{{ url_for('home') }}"><i class="fas fa-home mr-1"></i>Übersicht</a></li>
+          {% endif %}
+          <li class="breadcrumb-item active" aria-current="page"><i class="fas {{ cur.icon if cur else 'fa-home' if request.endpoint == 'home' else 'fa-exclamation-triangle' }} mr-1"></i>{{ self.title() }}</li>
+          <li class="breadcrumb-actions">{% block actions %}{% endblock %}</li>
+        </ol>
+      </nav>
+      {% for msg in get_flashed_messages() %}
+      <div class="alert alert-info" role="alert"><i class="fas fa-info-circle mr-1"></i>{{ msg }}</div>
+      {% endfor %}
+      {% block content %}{% endblock %}
     </div>
-    {% endif %}
-  </aside>
-  <main>
-    <header class="page-head">
-      <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
-      <div class="page-actions">{% block actions %}{% endblock %}</div>
-    </header>
-    {% for msg in get_flashed_messages() %}<p class="flash">{{ msg }}</p>{% endfor %}
-    {% block content %}{% endblock %}
   </main>
+
+  <footer class="footer py-3 bg-dark">
+    <div class="container-fluid"><span class="text-muted">Satis · Fabrikplanung für unsere Satisfactory-Welt</span></div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='vendor/jquery.slim.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='satis.js') }}"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

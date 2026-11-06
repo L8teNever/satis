@@ -1,0 +1,34 @@
+/* Eigene Ergänzungen. Das Aussehen selbst kommt aus vendor/bootstrap-darkly.min.css
+   (Bootswatch Darkly mit den Werten von satisfactory-calculator.com). */
+@font-face { font-family: Lato; font-weight: 400; font-display: swap; src: url(vendor/fonts/lato-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: Lato; font-weight: 400; font-style: italic; font-display: swap; src: url(vendor/fonts/lato-latin-400-italic.woff2) format("woff2"); }
+@font-face { font-family: Lato; font-weight: 700; font-display: swap; src: url(vendor/fonts/lato-latin-700-normal.woff2) format("woff2"); }
+
+.navbar-brand { font-weight: 700; letter-spacing: .08em; }
+.breadcrumb { align-items: center; }
+.breadcrumb .fas { line-height: inherit; }
+.breadcrumb-actions { margin: -.25rem 0 -.25rem auto; }
+
+.tile { color: #fff; }
+.tile:hover { color: #fff; text-decoration: none; background-color: #444; }
+
+.table td { vertical-align: middle; }
+.task-desc { white-space: pre-line; overflow-wrap: anywhere; }
+.is-done .task-title { color: #888; text-decoration: line-through; }
+
+/* Eigene Dropdowns und Kalender (satis.js) */
+.s-select { min-width: 8rem; }
+.s-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; text-align: left; text-transform: none; }
+.s-label { overflow: hidden; text-overflow: ellipsis; }
+.s-menu { min-width: 100%; max-height: 18rem; overflow-y: auto; }
+.s-cal { width: 18.5rem; padding: .5rem; }
+.s-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }
+.s-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.s-cal-grid .btn { padding-right: 0; padding-left: 0; }
+.s-cal-day { font-size: .8rem; text-align: center; }
+.s-cal-foot { display: flex; justify-content: space-between; margin-top: .5rem; }
+
+/* Fabriken */
+.s-search { position: sticky; top: -.5rem; z-index: 1; width: calc(100% - 1rem); margin: 0 .5rem .5rem; }
+.s-graph { height: 32rem; background-color: #222; }
+.s-recipe { min-width: 14rem; }

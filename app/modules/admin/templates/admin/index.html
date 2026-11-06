@@ -1,59 +1,72 @@
 {% extends "base.html" %}
 {% block title %}Nutzer{% endblock %}
 {% block content %}
-<section class="card">
-  <div class="card-head">Nutzer anlegen</div>
+<div class="card mb-3">
+  <div class="card-header"><i class="fas fa-user-plus mr-1"></i>Nutzer anlegen</div>
   <div class="card-body">
-    <form class="inline-form" method="post" action="{{ url_for('admin.add') }}">
+    <form method="post" action="{{ url_for('admin.add') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label>Name <input name="name" maxlength="80" required></label>
-      <label>E-Mail <input type="email" name="email" maxlength="200" required></label>
-      <label>Rolle
-        <select name="role"><option value="user">Nutzer</option><option value="admin">Admin</option></select>
-      </label>
-      <button class="btn btn-primary">Anlegen</button>
+      <div class="form-row align-items-end">
+        <div class="form-group col-md-4 mb-md-0">
+          <label for="new-name">Name</label>
+          <input id="new-name" class="form-control" name="name" maxlength="80" required>
+        </div>
+        <div class="form-group col-md-4 mb-md-0">
+          <label for="new-email">E-Mail</label>
+          <input id="new-email" class="form-control" type="email" name="email" maxlength="200" required>
+        </div>
+        <div class="form-group col-md-2 mb-md-0">
+          <label for="new-role">Rolle</label>
+          <select id="new-role" class="form-control" name="role"><option value="user" data-icon="fa-user">Nutzer</option><option value="admin" data-icon="fa-user-shield">Admin</option></select>
+        </div>
+        <div class="form-group col-md-2 mb-0">
+          <button class="btn btn-primary btn-block"><i class="fas fa-plus mr-1"></i>Anlegen</button>
+        </div>
+      </div>
     </form>
   </div>
-</section>
+</div>
 
-<section class="card">
-  <div class="card-head">{{ users|length }} Nutzer</div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Name</th><th>E-Mail</th><th>Rolle</th><th></th></tr></thead>
-      <tbody>
-        {% for u in users %}
-        <tr>
-          <td>
-            <form id="u{{ u.id }}" method="post" action="{{ url_for('admin.update', user_id=u.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            </form>
-            <input form="u{{ u.id }}" name="name" value="{{ u.name }}" maxlength="80" aria-label="Name" required>
-          </td>
-          <td class="muted">{{ u.email }}</td>
-          <td>
-            {% if u.id == me.id %}
-            <input form="u{{ u.id }}" type="hidden" name="role" value="admin">Admin (du)
-            {% else %}
-            <select form="u{{ u.id }}" name="role" aria-label="Rolle">
-              <option value="user" {{ 'selected' if u.role == 'user' }}>Nutzer</option>
-              <option value="admin" {{ 'selected' if u.role == 'admin' }}>Admin</option>
-            </select>
-            {% endif %}
-          </td>
-          <td class="cell-actions">
-            <button form="u{{ u.id }}" class="btn">Speichern</button>
-            {% if u.id != me.id %}
-            <form method="post" action="{{ url_for('admin.delete', user_id=u.id) }}" onsubmit="return confirm('Nutzer löschen?')">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-danger" title="Löschen" aria-label="Löschen">✕</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<div class="card">
+  <div class="card-header"><i class="fas fa-users mr-1"></i>{{ users|length }} Nutzer</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>Name</th><th>E-Mail</th><th>Rolle</th><th></th></tr></thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>
+              <form id="u{{ u.id }}" method="post" action="{{ url_for('admin.update', user_id=u.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              </form>
+              <input form="u{{ u.id }}" class="form-control form-control-sm" name="name" value="{{ u.name }}" maxlength="80" aria-label="Name" required>
+            </td>
+            <td class="text-muted">{{ u.email }}</td>
+            <td>
+              {% if u.id == me.id %}
+              <input form="u{{ u.id }}" type="hidden" name="role" value="admin"><span class="badge badge-warning">Admin (du)</span>
+              {% else %}
+              <select form="u{{ u.id }}" class="form-control form-control-sm" name="role" aria-label="Rolle">
+                <option value="user" data-icon="fa-user" {{ 'selected' if u.role == 'user' }}>Nutzer</option>
+                <option value="admin" data-icon="fa-user-shield" {{ 'selected' if u.role == 'admin' }}>Admin</option>
+              </select>
+              {% endif %}
+            </td>
+            <td class="text-right text-nowrap">
+              <button form="u{{ u.id }}" class="btn btn-sm btn-primary" title="Speichern" aria-label="Speichern"><i class="fas fa-save"></i></button>
+              {% if u.id != me.id %}
+              <form class="d-inline" method="post" action="{{ url_for('admin.delete', user_id=u.id) }}" data-confirm="Nutzer löschen?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-danger" title="Löschen" aria-label="Löschen"><i class="fas fa-trash-alt"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
-</section>
+</div>
 {% endblock %}

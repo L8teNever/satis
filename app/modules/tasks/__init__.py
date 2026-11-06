@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
 module = Module(
     name="tasks",
     label="Aufgaben",
-    icon="☑",
+    icon="fa-tasks",
     order=10,
     blueprint=bp,
     schema=SCHEMA,
