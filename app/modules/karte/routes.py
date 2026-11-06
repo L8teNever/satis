@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from flask import abort, g, jsonify, redirect, request, send_file, url_for
+from flask import abort, g, jsonify, render_template, request, send_file
 
 from ...core import bump_live, data_dir
 from . import bp
@@ -66,7 +66,7 @@ def _read_save(folder, sav, by):
 
 @bp.get("/")
 def index():
-    return redirect(url_for("fabriken.calc") + "#karte")
+    return render_template("karte/index.html")
 
 
 @bp.post("/upload")

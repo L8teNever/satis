@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Karte{% endblock %}
+{# Die Karte holt sich neue Welten selbst (karte.js), der Inhalt wird darum nicht live getauscht #}
+{% block live %}{% endblock %}
+{% block content %}{% include "karte/_map.html" %}{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='karte.js') }}"></script>
+{% endblock %}

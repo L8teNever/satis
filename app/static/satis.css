@@ -123,3 +123,7 @@ main > .container-fluid { max-width: 120rem; }
 .s-note-body { min-height: 8rem; font-family: SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
 .s-note-read { white-space: pre-wrap; word-break: break-word; }
 @media (max-width: 575.98px) { .s-notes { grid-template-columns: 1fr; } }
+
+/* Karte als eigene Seite: füllt den Bildschirm unter Kopf und Brotkrumen */
+.s-map-page { height: calc(100vh - 9.5rem); min-height: 22rem; }
+.s-map-page.s-map-full { height: auto; }

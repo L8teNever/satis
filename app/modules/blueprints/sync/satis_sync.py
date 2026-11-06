@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 INI = HERE / "satis_sync.ini"
 STATE = HERE / "satis_sync_state.json"
 DEFAULT_URL = "__SATIS_URL__"
+PRESET = {}  # __PRESET__  (Die Satis-Seite trägt hier Schlüssel und Pfade ein)
 BAD = '<>:"/\\|?*'
 
 
@@ -39,13 +40,19 @@ def default_savegames():
     return Path.home() / ".steam/steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames"
 
 
+def savegames(s):
+    return Path(os.path.expandvars(os.path.expanduser(s["savegames"])))
+
+
 def load_config():
-    cfg = configparser.ConfigParser()
+    cfg = configparser.ConfigParser(interpolation=None)
     cfg.read(INI, encoding="utf-8")
     if not cfg.has_section("satis"):
         cfg.add_section("satis")
     s = cfg["satis"]
     changed = False
+    for key, value in PRESET.items():  # Vorgaben von der Satis-Seite, eine vorhandene ini gewinnt
+        s.setdefault(key, value)
     if not s.get("url"):
         s["url"] = DEFAULT_URL if not DEFAULT_URL.startswith("__") else input("Adresse der Satis-Seite: ").strip()
         changed = True
@@ -134,7 +141,7 @@ def log(msg):
 
 # --------------------------------------------------------------------------- Blueprints
 def blueprint_dirs(s):
-    root = Path(s["savegames"]) / "blueprints"
+    root = savegames(s) / "blueprints"
     wanted = [x.strip() for x in s["sessions"].split(",") if x.strip()]
     if wanted:
         dirs = [root / w for w in wanted]
@@ -162,7 +169,7 @@ def sync_blueprints(server, s, state, warned):
     dirs = blueprint_dirs(s)
     if not dirs:
         if "nodir" not in warned:
-            log(f"Kein Blueprint-Ordner unter {Path(s['savegames']) / 'blueprints'}. Öffne im Spiel einmal den "
+            log(f"Kein Blueprint-Ordner unter {savegames(s) / 'blueprints'}. Öffne im Spiel einmal den "
                 "Blueprint-Designer oder trag in satis_sync.ini bei sessions den Namen deiner Session ein.")
             warned.add("nodir")
         return
@@ -207,7 +214,7 @@ def print_list(server):
 
 # --------------------------------------------------------------------------- Spielstand
 def newest_save(s):
-    root = Path(s["savegames"])
+    root = savegames(s)
     if not root.is_dir():
         return None
     saves = [p for p in root.rglob("*.sav") if "blueprints" not in p.parts]
@@ -249,7 +256,7 @@ def main():
         return
     state, warned = load_state(), set()
     log(f"Satis-Sync läuft mit {server.base}. Beenden mit Strg+C.")
-    log(f"Spielstände: {s['savegames']}")
+    log(f"Spielstände: {savegames(s)}")
     while True:
         for step in (lambda: sync_blueprints(server, s, state, warned), lambda: sync_save(server, s, state)):
             try:

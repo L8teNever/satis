@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block title %}Blueprints{% endblock %}
-{% block live %}{% endblock %}{# nur die Liste aktualisiert sich live, ein frischer Sync-Schlüssel soll stehen bleiben #}
 {% block content %}
 <div class="row">
   <div class="col-lg-8 mb-3">
@@ -66,22 +65,8 @@
     <div class="card">
       <div class="card-header"><i class="fas fa-sync-alt mr-1"></i>Sync-Skript für deinen PC</div>
       <div class="card-body">
-        <p class="small mb-2">Läuft neben dem Spiel und erledigt zwei Dinge von selbst: neue Blueprints landen direkt im Blueprint-Ordner, und dein neuester Spielstand geht für die Karte auf den Server.</p>
-        <ol class="small pl-3 mb-3">
-          <li><a href="{{ url_for('blueprints.script') }}" data-no-nav>satis_sync.py herunterladen</a> (braucht Python 3)</li>
-          <li>Unten einen Sync-Schlüssel erstellen</li>
-          <li><code>python satis_sync.py</code> starten und den Schlüssel einfügen</li>
-        </ol>
-        {% if token %}
-        <div class="alert alert-warning small mb-2">
-          <strong>Dein Sync-Schlüssel</strong>, nur jetzt sichtbar:
-          <input class="form-control form-control-sm mt-1" value="{{ token }}" readonly onclick="this.select()" aria-label="Sync-Schlüssel">
-        </div>
-        {% endif %}
-        <form method="post" action="{{ url_for('blueprints.token') }}" data-confirm="Neuen Sync-Schlüssel erstellen? Ein alter hört dann auf zu funktionieren.">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-sm btn-secondary"><i class="fas fa-key mr-1"></i>Sync-Schlüssel erstellen</button>
-        </form>
+        <p class="small mb-3">Läuft neben dem Spiel: Neue Blueprints landen direkt im Blueprint-Ordner, und dein neuester Spielstand geht für die Karte auf den Server.</p>
+        <a class="btn btn-sm btn-warning text-secondary font-weight-bold" href="{{ url_for('blueprints.sync') }}"><i class="fas fa-book mr-1"></i>Anleitung &amp; Download</a>
       </div>
     </div>
   </div>

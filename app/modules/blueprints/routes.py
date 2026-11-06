@@ -5,6 +5,7 @@ Gespeichert wird nach id im Datenordner, der Name ist nur Anzeige und Dateiname 
 Gleicher Name ersetzt die alte Version, das Sync-Skript erkennt das am geänderten sha.
 """
 import hashlib
+import json
 import os
 import re
 import tempfile
@@ -157,14 +158,78 @@ def token():
     return render_template("blueprints/index.html", rows=_rows(), token=new_sync_token(g.user["id"]))
 
 
-@bp.get("/skript")
-def script():
-    """Das Sync-Skript, die Server-Adresse ist schon eingetragen."""
+def _setting(key):
+    r = get_db().execute("SELECT value FROM blueprint_settings WHERE key = ?", (key,)).fetchone()
+    return r["value"] if r else ""
+
+
+def _base_url():
     # Hinter dem Cloudflare-Tunnel kommt die Anfrage als http an, nach außen ist es immer https
-    host = request.host if request.host.split(":")[0] in ("localhost", "127.0.0.1") else None
-    base = f"http://{host}" if host else f"https://{request.host}"
-    src = SCRIPT.read_text(encoding="utf-8").replace("__SATIS_URL__", base)
+    if request.host.split(":")[0] in ("localhost", "127.0.0.1"):
+        return f"http://{request.host}"
+    return f"https://{request.host}"
+
+
+def _script(preset=None):
+    src = SCRIPT.read_text(encoding="utf-8").replace("__SATIS_URL__", _base_url())
+    if preset:
+        src = src.replace("PRESET = {}  # __PRESET__", "PRESET = " + json.dumps(preset, ensure_ascii=True) + "  # von der Satis-Seite")
     res = make_response(src)
     res.headers["Content-Type"] = "text/x-python; charset=utf-8"
     res.headers["Content-Disposition"] = "attachment; filename=satis_sync.py"
     return res
+
+
+@bp.get("/skript")
+def script():
+    """Das Sync-Skript ohne Vorgaben, es fragt beim ersten Start nach allem."""
+    return _script()
+
+
+WIN_PATH = "%LOCALAPPDATA%\\FactoryGame\\Saved\\SaveGames"
+
+
+@bp.get("/sync")
+def sync():
+    return render_template("blueprints/sync.html", win_path=WIN_PATH, cf_set=bool(_setting("cf_client_id")),
+                           base=_base_url())
+
+
+@bp.post("/sync/download")
+def sync_download():
+    """Fertiges Skript mit Server, Pfad und einem neuen Sync-Schlüssel. Ein alter Schlüssel verliert dabei seine Gültigkeit."""
+    if g.get("via_token"):
+        abort(403)
+    path = request.form.get("savegames", "").strip()[:300] or WIN_PATH
+    sessions = ", ".join(x.strip() for x in request.form.get("sessions", "").split(",") if x.strip())[:300]
+    preset = {
+        "token": new_sync_token(g.user["id"]),
+        "savegames": path,
+        "sessions": sessions,
+        "upload_saves": "ja" if request.form.get("upload_saves") else "nein",
+    }
+    if _setting("cf_client_id"):
+        preset["cf_client_id"] = _setting("cf_client_id")
+        preset["cf_client_secret"] = _setting("cf_client_secret")
+    return _script(preset)
+
+
+@bp.post("/sync/cloudflare")
+def sync_cloudflare():
+    """Admin trägt das Cloudflare-Service-Token einmal ein, danach steckt es in jedem heruntergeladenen Skript."""
+    if g.user["role"] != "admin":
+        abort(403)
+    cid = request.form.get("client_id", "").strip()[:200]
+    secret = request.form.get("client_secret", "").strip()[:300]
+    db = get_db()
+    if cid and secret:
+        db.executemany("INSERT OR REPLACE INTO blueprint_settings (key, value) VALUES (?, ?)",
+                       [("cf_client_id", cid), ("cf_client_secret", secret)])
+        flash("Cloudflare-Token gespeichert.")
+    elif request.form.get("clear"):
+        db.execute("DELETE FROM blueprint_settings WHERE key IN ('cf_client_id', 'cf_client_secret')")
+        flash("Cloudflare-Token entfernt.")
+    else:
+        flash("Client-ID und Client-Secret fehlen.")
+    db.commit()
+    return redirect(url_for("blueprints.sync"))

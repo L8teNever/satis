@@ -1,4 +1,4 @@
-/* Karte der Spielwelt im Rechner. Gezeichnet wird auf einem Canvas und nur, wenn sich etwas ändert.
+/* Karte der Spielwelt (eigene Seite). Gezeichnet wird auf einem Canvas und nur, wenn sich etwas ändert.
    Neue Ebenen kommen aus layers.py, hier muss dafür nichts geändert werden. */
 (function () {
   /* Geladene Welt bleibt beim Seitenwechsel im Speicher, solange der Stand gleich ist */
@@ -358,15 +358,13 @@
       img.src = root.dataset.image;
       watch();
     }
-    const tab = document.querySelector('a[href="#karte"]');
-    $(tab).on("shown.bs.tab", start);
-    if (document.getElementById("karte").classList.contains("active")) start();
+    start();
     const resize = new ResizeObserver(redraw);
     resize.observe(canvas);
     return {
       root,
       live() { if (started) watch(true); },
-      stop() { alive = false; resize.disconnect(); $(tab).off("shown.bs.tab", start); },
+      stop() { alive = false; resize.disconnect(); },
     };
   }
 

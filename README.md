@@ -91,7 +91,7 @@ Stand holen sie die Seite still neu und tauschen jeden Bereich mit `data-live="n
 
 Links und Formulare laden nicht die ganze Seite neu. `satis.js` holt die neue Seite im Hintergrund und tauscht nur, was
 anders ist: Kopf (`data-part="header"`), Brotkrumen, Meldungen und Inhalt einzeln. Bleibt man auf derselben Seite und das
-Gerüst ohne die `data-live`-Bereiche ist gleich, werden nur die geänderten Bereiche getauscht. Im Rechner bleiben Karte,
+Gerüst ohne die `data-live`-Bereiche ist gleich, werden nur die geänderten Bereiche getauscht. Im Rechner bleibt
 Zoom und offener Tab dadurch stehen. Dauert es länger als einen Moment, laufen oben ein Ladebalken und der Inhalt wird
 leicht abgedunkelt. Zeigt die Maus oder der Finger auf einen Link, wird die Seite schon vorgeladen.
 
@@ -107,7 +107,7 @@ leicht abgedunkelt. Zeigt die Maus oder der Finger auf einen Link, wird die Seit
 
 ## Karte
 
-Im Rechner gibt es den Tab **Karte**. Dort lädt man einen Spielstand hoch, `extract/extract.mjs` liest ihn im Hintergrund aus und
+Die Karte hat eine eigene Seite im Menü (`/karte/`). Dort lädt man einen Spielstand hoch, `extract/extract.mjs` liest ihn im Hintergrund aus und
 `app/modules/karte/layers.py` macht daraus die Ebenen. Eine neue Ebene ist ein Eintrag in `LAYERS` und eine Regel in `RULES`.
 Das Kartenbild gehört Coffee Stain und ist nicht im Repo. Ohne `/data/karte/map.jpg` bleibt der Hintergrund einfarbig.
 
@@ -129,7 +129,8 @@ Jeder hat eigene Notiz-Blöcke unter `/notizen/`. Sie speichern sich beim Tippen
 ## Blueprints und Sync-Skript
 
 Unter `/blueprints/` lädt jeder `.sbp` (+ `.sbpcfg`) hoch, gleicher Name ersetzt die alte Version.
-Das Skript `satis_sync.py` (Download auf der Seite, nur Python 3) läuft auf dem eigenen PC: Es holt neue Blueprints in
+Unter `/blueprints/sync` stehen Anleitung und Download: Dort stellt man den Pfad ein und bekommt das Skript fertig mit Server, Pfad und eigenem Schlüssel. Ein Admin trägt dort einmal das Cloudflare-Service-Token ein, das dann in jedem Download steckt.
+Das Skript `satis_sync.py` (nur Python 3) läuft auf dem eigenen PC: Es holt neue Blueprints in
 `%LOCALAPPDATA%\FactoryGame\Saved\SaveGames\blueprints\<Session>` und lädt den neuesten Spielstand für die Karte hoch.
 Es meldet sich mit einem Sync-Schlüssel (`X-Satis-Token`, auf der Seite erstellen) an, der nur für `blueprints` und
 `karte` gilt. Damit Cloudflare Access das Skript durchlässt, braucht es ein Service-Token

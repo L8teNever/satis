@@ -231,10 +231,12 @@ def test_map_tab_and_upload(client, monkeypatch, tmp_path):
     monkeypatch.setattr(karte_routes, "_read_save", lambda folder, sav, by: (
         karte_routes._write(folder / "world.json", build(RAW, by)),
         karte_routes._write(folder / "status.json", {"state": "ok"})))
-    assert 'id="karte"' in client.get("/fabriken/rechner", headers=ADMIN).text
-    assert ">Karte<" not in client.get("/", headers=ADMIN).text.split("</header>")[0]
+    page = client.get("/karte/", headers=ADMIN).text
+    assert "data-karte" in page
+    assert "data-karte" not in client.get("/fabriken/rechner", headers=ADMIN).text
+    assert "Karte</a>" in client.get("/", headers=ADMIN).text.split("</header>")[0]
     assert client.get("/karte/world.json", headers=ADMIN).status_code == 404
-    token = re.search(r'data-csrf="([^"]+)"', client.get("/fabriken/rechner", headers=ADMIN).text).group(1)
+    token = re.search(r'data-csrf="([^"]+)"', page).group(1)
     send = {**ADMIN, "X-CSRF-Token": token}
     bad = client.post("/karte/upload", headers=send, data={"save": (io.BytesIO(b"x"), "bild.png")})
     assert bad.status_code == 400

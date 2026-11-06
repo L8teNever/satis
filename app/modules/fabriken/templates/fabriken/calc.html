@@ -10,7 +10,7 @@
 </select>
 {% endif %}
 {% endmacro %}
-{# Im Rechner werden nur einzelne Teile live getauscht, die Karte bleibt stehen #}
+{# Im Rechner werden nur einzelne Teile live getauscht, der Graph bleibt stehen #}
 {% block live %}{% endblock %}
 {% block content %}
 <div class="s-calc">
@@ -51,7 +51,6 @@
           <li class="nav-item"><a class="nav-link" href="#kette" data-toggle="tab"><i class="fas fa-list mr-1"></i>Produktion</a></li>
           <li class="nav-item"><a class="nav-link" href="#items" data-toggle="tab"><i class="fas fa-tools mr-1"></i>Items</a></li>
           <li class="nav-item"><a class="nav-link" href="#gebaeude" data-toggle="tab"><i class="fas fa-industry mr-1"></i>Gebäude</a></li>
-          <li class="nav-item"><a class="nav-link" href="#karte" data-toggle="tab"><i class="fas fa-map mr-1"></i>Karte</a></li>
         </ul>
       </div>
       <div class="card-body p-0">
@@ -129,7 +128,6 @@
           <div class="tab-pane fade {{ 'show active' if loop.first }}" id="{{ id }}" data-live="{{ id }}"><p class="text-muted text-center py-5 mb-0"><i class="fas fa-calculator fa-2x d-block mb-2"></i>Wähl aus, was produziert werden soll.</p></div>
           {% endfor %}
           {% endif %}
-          {% include "karte/_tab.html" %}
         </div>
       </div>
       <div class="card-footer d-flex flex-wrap justify-content-between" data-live="calc-footer">
@@ -197,5 +195,4 @@
 <script src="{{ url_for('static', filename='vendor/dagre.min.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor/cytoscape-dagre.js') }}"></script>
 <script src="{{ url_for('static', filename='fabriken.js') }}"></script>
-<script src="{{ url_for('static', filename='karte.js') }}"></script>
 {% endblock %}
