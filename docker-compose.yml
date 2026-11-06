@@ -1,0 +1,22 @@
+services:
+  satis:
+    # Image wird direkt aus dem GitHub-Repo gebaut (kein lokaler Code nötig).
+    # Neues Update ziehen:  docker compose build --pull --no-cache && docker compose up -d
+    build:
+      context: https://github.com/L8teNever/satis.git#main
+    container_name: satis
+    restart: unless-stopped
+    environment:
+      # Cloudflare Access (Zero Trust) – Team-Domain + AUD-Tag der Access-App.
+      # Wenn beide gesetzt sind, wird das JWT von Cloudflare geprüft (empfohlen).
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}   # z. B. deinteam.cloudflareaccess.com
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+    volumes:
+      - satis-data:/data
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"   # für cloudflared auf dem Host: http://localhost:8000
+    # Läuft cloudflared selbst als Container? Dann ports entfernen und beide
+    # in dasselbe Docker-Netzwerk hängen -> Service-URL http://satis:8000
+
+volumes:
+  satis-data:

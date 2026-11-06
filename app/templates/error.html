@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% set titles = {400: "Ungültige Anfrage", 403: "Kein Zugriff", 404: "Nicht gefunden"} %}
+{% block title %}{{ titles.get(e.code, "Fehler") }}{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <div class="card-body">
+    <p class="error-code">{{ e.code }}</p>
+    {% if e.code == 400 %}<p>{{ e.description }}</p>{% endif %}
+    <a class="btn" href="{{ url_for('home') }}">Zur Übersicht</a>
+  </div>
+</section>
+{% endblock %}

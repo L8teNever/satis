@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Satis{% endblock %} · Satis</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('home') if me else '#' }}"><span class="brand-mark">S</span>Satis</a>
+    {% if me %}
+    <nav>
+      <a href="{{ url_for('home') }}" class="{{ 'active' if request.endpoint == 'home' }}"><span class="ico">⌂</span>Übersicht</a>
+      {% for m in nav_modules %}
+      <a href="{{ url_for(m.endpoint) }}" class="{{ 'active' if request.blueprint == m.blueprint.name }}"><span class="ico">{{ m.icon }}</span>{{ m.label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="whoami">
+      <strong>{{ me.name }}</strong>
+      <small>{{ me.email }}</small>
+      <a href="/cdn-cgi/access/logout">Abmelden</a>
+    </div>
+    {% endif %}
+  </aside>
+  <main>
+    <header class="page-head">
+      <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
+      <div class="page-actions">{% block actions %}{% endblock %}</div>
+    </header>
+    {% for msg in get_flashed_messages() %}<p class="flash">{{ msg }}</p>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Aufgaben{% endblock %}
+{% block actions %}<a class="btn btn-primary" href="{{ url_for('tasks.new') }}">+ Neue Aufgabe</a>{% endblock %}
+{% block content %}
+<form class="filters" method="get">
+  <label>Status
+    <select name="status" onchange="this.form.submit()">
+      <option value="">Alle</option>
+      {% for k, v in STATUS.items() %}<option value="{{ k }}" {{ 'selected' if f_status == k }}>{{ v }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Zuständig
+    <select name="who" onchange="this.form.submit()">
+      <option value="">Alle</option>
+      <option value="me" {{ 'selected' if f_who == 'me' }}>Ich</option>
+      <option value="none" {{ 'selected' if f_who == 'none' }}>Niemand</option>
+      {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if f_who == u.id|string }}>{{ u.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <noscript><button class="btn">Filtern</button></noscript>
+</form>
+
+<section class="card">
+  <div class="card-head">{{ tasks|length }} {{ 'Aufgabe' if tasks|length == 1 else 'Aufgaben' }}</div>
+  {% for t in tasks %}
+  <article class="task {{ 'is-done' if t.status == 'done' }}">
+    <div class="task-main">
+      <a class="task-title" href="{{ url_for('tasks.edit', task_id=t.id) }}">{{ t.title }}</a>
+      {% if t.description %}<p class="task-desc">{{ t.description }}</p>{% endif %}
+      <div class="task-meta">
+        <span class="badge prio-{{ t.priority }}">{{ PRIORITY[t.priority] }}</span>
+        <span>{{ t.assignee_name or 'Niemand zugeteilt' }}</span>
+        {% if t.due %}<span class="{{ 'overdue' if t.due < today and t.status != 'done' }}">bis {{ t.due }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="task-actions">
+      <form method="post" action="{{ url_for('tasks.set_status', task_id=t.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="status" class="status-{{ t.status }}" aria-label="Status" onchange="this.form.submit()">
+          {% for k, v in STATUS.items() %}<option value="{{ k }}" {{ 'selected' if t.status == k }}>{{ v }}</option>{% endfor %}
+        </select>
+        <noscript><button class="btn">OK</button></noscript>
+      </form>
+      {% if me.role == 'admin' or t.created_by == me.id %}
+      <form method="post" action="{{ url_for('tasks.delete', task_id=t.id) }}" onsubmit="return confirm('Aufgabe löschen?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-danger" title="Löschen" aria-label="Löschen">✕</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+  {% else %}
+  <p class="empty">Keine Aufgaben gefunden.</p>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Aufgabe bearbeiten' if t else 'Neue Aufgabe' }}{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <div class="card-body">
+    <form class="stack" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Titel
+        <input name="title" value="{{ t.title if t }}" maxlength="200" required autofocus>
+      </label>
+      <label>Beschreibung
+        <textarea name="description" rows="5" maxlength="5000">{{ t.description if t }}</textarea>
+      </label>
+      <div class="row">
+        <label>Zuständig
+          <select name="assignee_id">
+            <option value="">Niemand</option>
+            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if t and t.assignee_id == u.id }}>{{ u.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Priorität
+          <select name="priority">
+            {% for k, v in PRIORITY.items() %}<option value="{{ k }}" {{ 'selected' if (t.priority if t else 2) == k }}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label>Status
+          <select name="status">
+            {% for k, v in STATUS.items() %}<option value="{{ k }}" {{ 'selected' if (t.status if t else 'open') == k }}>{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Fällig
+          <input type="date" name="due" value="{{ t.due if t and t.due }}">
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary">Speichern</button>
+        <a class="btn" href="{{ url_for('tasks.index') }}">Abbrechen</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

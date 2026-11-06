@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Kein Zugang{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <div class="card-body">
+    {% if state == "unknown" %}
+    <p><strong>{{ email }}</strong> ist noch nicht freigeschaltet.</p>
+    <p class="muted">Der Admin muss dich zuerst mit dieser E-Mail als Nutzer anlegen.</p>
+    {% else %}
+    <p>Deine Anmeldung konnte nicht erkannt werden.</p>
+    <p class="muted">Die Seite ist nur über Cloudflare Access erreichbar. Lade neu oder melde dich noch einmal an.</p>
+    {% endif %}
+    <a class="btn" href="/cdn-cgi/access/logout">Mit anderer E-Mail anmelden</a>
+  </div>
+</section>
+{% endblock %}

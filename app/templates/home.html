@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Übersicht{% endblock %}
+{% block content %}
+<div class="grid">
+  {% for m in cards %}
+  <a class="card tile" href="{{ url_for(m.endpoint) }}">
+    <span class="tile-ico">{{ m.icon }}</span>
+    <h2>{{ m.label }}</h2>
+    <p>{{ m.description }}</p>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

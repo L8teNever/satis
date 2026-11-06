@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Nutzer{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-head">Nutzer anlegen</div>
+  <div class="card-body">
+    <form class="inline-form" method="post" action="{{ url_for('admin.add') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Name <input name="name" maxlength="80" required></label>
+      <label>E-Mail <input type="email" name="email" maxlength="200" required></label>
+      <label>Rolle
+        <select name="role"><option value="user">Nutzer</option><option value="admin">Admin</option></select>
+      </label>
+      <button class="btn btn-primary">Anlegen</button>
+    </form>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">{{ users|length }} Nutzer</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>E-Mail</th><th>Rolle</th><th></th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            <form id="u{{ u.id }}" method="post" action="{{ url_for('admin.update', user_id=u.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            </form>
+            <input form="u{{ u.id }}" name="name" value="{{ u.name }}" maxlength="80" aria-label="Name" required>
+          </td>
+          <td class="muted">{{ u.email }}</td>
+          <td>
+            {% if u.id == me.id %}
+            <input form="u{{ u.id }}" type="hidden" name="role" value="admin">Admin (du)
+            {% else %}
+            <select form="u{{ u.id }}" name="role" aria-label="Rolle">
+              <option value="user" {{ 'selected' if u.role == 'user' }}>Nutzer</option>
+              <option value="admin" {{ 'selected' if u.role == 'admin' }}>Admin</option>
+            </select>
+            {% endif %}
+          </td>
+          <td class="cell-actions">
+            <button form="u{{ u.id }}" class="btn">Speichern</button>
+            {% if u.id != me.id %}
+            <form method="post" action="{{ url_for('admin.delete', user_id=u.id) }}" onsubmit="return confirm('Nutzer löschen?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-danger" title="Löschen" aria-label="Löschen">✕</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
