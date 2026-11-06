@@ -173,6 +173,21 @@
       ctx.fill();
     }
 
+    function outline(it, i, sx, sy) {
+      const x = sx(it[i]), y = sy(it[i + 1]);
+      const a = it[i + 2] * Math.PI / 180;
+      const lx = Math.max(it[i + 3] * view.s, 8) / 2, ly = Math.max(it[i + 4] * view.s, 8) / 2;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.shadowColor = "rgba(0, 0, 0, .8)";
+      ctx.shadowBlur = 4;
+      ctx.strokeRect(-lx - 2, -ly - 2, lx * 2 + 4, ly * 2 + 4);
+      ctx.restore();
+    }
+
     function drawLines(l, sx, sy) {
       ctx.strokeStyle = l.color;
       ctx.lineWidth = l.id === "wires" ? 1 : Math.min(4, Math.max(1, view.s * 150));
@@ -410,6 +425,7 @@
       // Planung über der Welt, Spieler ganz oben
       if (shown(marksLayer)) marks.forEach((m) => drawMark(m, sx, sy));
       if (draft) drawMark(draft, sx, sy);
+      if (hovered && shown(hovered.l)) outline(hovered.l.items, hovered.i, sx, sy);
       layers.forEach((l) => { if (l.kind === "player" && shown(l)) drawPlayers(l, sx, sy, w, h); });
     }
 
@@ -539,6 +555,163 @@
         .catch((err) => { showInfo(err.message); loadMarks(); });
     }
 
+    /* ------------------------------------------------------------ Hover über Maschinen
+       Gebäude mit Inventar oder Zustand (layers.py: "details") zeigen beim Drüberfahren, was drin ist.
+       Am Handy reicht Antippen. */
+    const tip = document.createElement("div");
+    tip.className = "s-map-tip";
+    tip.hidden = true;
+    canvas.parentNode.append(tip);
+    const MACHINES = new Set(["factories", "miners", "generators", "storage"]);  // auch leer anzeigen
+    let hovered = null;  // { l, i } = Ebene und Startindex im items-Array
+    const PARTS = { in: "Eingang", out: "Ausgang", fuel: "Brennstoff", store: "Lager", boost: "Shards und Somersloops" };
+
+    function machineAt(px, py) {
+      if (!world) return null;
+      const [wx, wy] = toWorld(px, py);
+      const pad = 3 / view.s;
+      let best = null, area = Infinity;
+      for (const l of world.layers) {
+        if (l.kind !== "rect" || !l.details || !shown(l)) continue;
+        const it = l.items;
+        const always = MACHINES.has(l.id);
+        for (let i = 0; i < it.length; i += 6) {
+          if (!always && !l.details[String(i / 6)]) continue;
+          const dx = wx - it[i], dy = wy - it[i + 1];
+          if (Math.abs(dx) > it[i + 3] + pad && Math.abs(dy) > it[i + 3] + pad) continue;
+          const a = it[i + 2] * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+          const lx = dx * c + dy * s, ly = -dx * s + dy * c;
+          if (Math.abs(lx) <= it[i + 3] / 2 + pad && Math.abs(ly) <= it[i + 4] / 2 + pad) {
+            // Liegen Gebäude übereinander (z. B. Lager auf Fundament), gewinnt das kleinere
+            const size = it[i + 3] * it[i + 4];
+            if (size < area) { area = size; best = { l, i }; }
+          }
+        }
+      }
+      return best;
+    }
+
+    function amount(n, liquid) {
+      return liquid ? `${n.toLocaleString("de-DE", { maximumFractionDigits: 1 })} m³` : n.toLocaleString("de-DE");
+    }
+
+    function fillTip(hit) {
+      const { l, i } = hit;
+      const d = (l.details && l.details[String(i / 6)]) || {};
+      const label = world.labels[l.items[i + 5]] || l.label;
+      const [name, recipe] = label.includes(": ") ? label.split(/: (.*)/s) : [label, d.recipe || ""];
+      tip.replaceChildren();
+      const head = document.createElement("div");
+      head.className = "s-map-tip-head";
+      const img = document.createElement("img");
+      img.src = ICON_BASE + iconName(l);
+      img.alt = "";
+      const title = document.createElement("div");
+      const strong = document.createElement("strong");
+      strong.textContent = name;
+      title.append(strong);
+      if (recipe) {
+        const sub = document.createElement("div");
+        sub.className = "s-map-tip-sub";
+        sub.textContent = recipe;
+        title.append(sub);
+      }
+      head.append(img, title);
+      tip.append(head);
+
+      const facts = [];
+      if (d.paused) facts.push(["Pausiert", "#f2b33d"]);
+      if (d.eff !== undefined) facts.push([`Auslastung ${d.eff} %`, d.eff >= 95 ? "#5fd068" : d.eff >= 50 ? "#f2b33d" : "#e8564a"]);
+      if (d.clock !== undefined) facts.push([`Takt ${d.clock.toLocaleString("de-DE")} %`, "#2fb8ff"]);
+      if (d.boost !== undefined) facts.push([`Boost ×${d.boost.toLocaleString("de-DE")}`, "#d040d0"]);
+      if (d.prog !== undefined) facts.push([`Fortschritt ${d.prog} %`, "#aaaaaa"]);
+      if (facts.length) {
+        const row = document.createElement("div");
+        row.className = "s-map-tip-facts";
+        facts.forEach(([text, c]) => {
+          const f = document.createElement("span");
+          f.textContent = text;
+          f.style.borderColor = c;
+          f.style.color = c;
+          row.append(f);
+        });
+        tip.append(row);
+      }
+      if (d.eff !== undefined) {
+        const bar = document.createElement("div");
+        bar.className = "s-map-tip-bar";
+        const fill = document.createElement("span");
+        fill.style.width = `${Math.max(0, Math.min(100, d.eff))}%`;
+        fill.style.backgroundColor = d.eff >= 95 ? "#5fd068" : d.eff >= 50 ? "#f2b33d" : "#e8564a";
+        bar.append(fill);
+        tip.append(bar);
+      }
+
+      (d.inv || []).forEach(([part, rows]) => {
+        const h = document.createElement("div");
+        h.className = "s-map-tip-part";
+        h.textContent = PARTS[part] || part;
+        tip.append(h);
+        rows.forEach(([cls, n]) => {
+          const [itemName, liquid] = (world.items && world.items[cls]) || [cls, false];
+          const r = document.createElement("div");
+          r.className = "s-map-tip-row";
+          const ic = document.createElement("img");
+          ic.src = `${ICON_BASE}item/${cls}.png`;
+          ic.alt = "";
+          ic.onerror = () => { ic.style.visibility = "hidden"; };
+          const nm = document.createElement("span");
+          nm.textContent = itemName;
+          const am = document.createElement("span");
+          am.className = "s-map-tip-n";
+          am.textContent = amount(n, liquid);
+          r.append(ic, nm, am);
+          tip.append(r);
+        });
+      });
+      if (!d.inv) {
+        const empty = document.createElement("div");
+        empty.className = "s-map-tip-empty";
+        empty.textContent = "Inventar leer";
+        tip.append(empty);
+      }
+    }
+
+    function placeTip(px, py) {
+      const { w, h } = size();
+      tip.hidden = false;
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      let x = px + 16, y = py + 16;
+      if (x + tw > w - 6) x = Math.max(6, px - tw - 16);
+      if (y + th > h - 6) y = Math.max(6, h - th - 6);
+      tip.style.left = `${x}px`;
+      tip.style.top = `${y}px`;
+    }
+
+    function hover(px, py) {
+      const hit = machineAt(px, py);
+      const same = hit && hovered && hit.l === hovered.l && hit.i === hovered.i;
+      if (!hit) { hideTip(); return; }
+      if (!same) { hovered = hit; fillTip(hit); redraw(); }
+      placeTip(px, py);
+    }
+
+    function hideTip() {
+      if (!hovered && tip.hidden) return;
+      hovered = null;
+      tip.hidden = true;
+      redraw();
+    }
+
+    let hoverAt = null;
+    function queueHover(px, py) {
+      const pending = hoverAt;
+      hoverAt = [px, py];
+      if (pending) return;
+      requestAnimationFrame(() => { const [x, y] = hoverAt; hoverAt = null; if (alive) hover(x, y); });
+    }
+    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hideTip(); });
+
     /* ------------------------------------------------------------ Maus und Finger
        Werkzeug „Verschieben“: ein Zeiger verschiebt, zwei zoomen, ein kurzer Klick zeigt, was dort steht.
        Zeichenwerkzeuge: ein Zeiger zeichnet, zwei Finger verschieben und zoomen weiterhin, die mittlere
@@ -556,6 +729,7 @@
       pointers.set(e.pointerId, e);
       moved = 0;
       spread = 0;
+      if (e.pointerType !== "mouse") hideTip();
       if (pointers.size > 1) { draft = null; redraw(); return; }  // zweiter Finger: zoomen statt zeichnen
       panning = tool === "move" || (e.pointerType === "mouse" && e.button !== 0);
       if (panning || tool === "erase" || tool === "pin") return;
@@ -567,6 +741,7 @@
       const last = pointers.get(e.pointerId);
       if (!last) {
         if (tool === "erase") canvas.classList.toggle("s-map-hit", !!markAt(...local(e)));
+        else if (tool === "move" && e.pointerType === "mouse") queueHover(...local(e));
         return;
       }
       pointers.set(e.pointerId, e);
@@ -585,6 +760,7 @@
           }
           redraw();
         } else if (panning) {
+          if (moved > 6) hideTip();
           view.x -= dx / view.s;
           view.y -= dy / view.s;
           redraw();
@@ -629,6 +805,7 @@
       } else {
         const m = markAt(px, py);
         showInfo(m ? describeMark(m) : pick(px, py));
+        if (!m && e.pointerType !== "mouse") hover(px, py);
       }
     };
     canvas.addEventListener("pointerup", release);
@@ -637,6 +814,7 @@
       e.preventDefault();
       const [px, py] = local(e);
       zoom(e.deltaY < 0 ? 1.25 : 0.8, px, py);
+      if (tool === "move") queueHover(px, py);
     }, { passive: false });
 
     /* ------------------------------------------------------------ Werkzeugleiste */

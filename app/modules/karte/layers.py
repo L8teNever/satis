@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 
-from ..fabriken.solver import RECIPES
+from ..fabriken.solver import ITEMS, RECIPES
 
 DATA = json.loads((Path(__file__).parent / "data.json").read_text(encoding="utf-8"))
 BOUNDS = {"x": -324698.832031, "y": -375000.0, "size": 750000.0}  # Bereich der Karte in Spielkoordinaten (cm)
@@ -128,19 +128,27 @@ def build(raw, by="", filename=""):
     defaults = {row[0]: row[6] for row in LAYERS}
     items = {row[0]: [] for row in LAYERS}
     counts = dict.fromkeys(items, 0)
+    # Hover: Inventar und Zustand pro Gebäude. Schlüssel ist die laufende Nummer in der Ebene.
+    details = {row[0]: {} for row in LAYERS}
+    seen_items = set()
 
     for cls, rows in raw["things"].items():
         layer = layer_of(cls)
         if not layer:
             continue
         name = DATA["classes"].get(cls, [_pretty(cls)])[0]
-        for x, y, _z, yaw, extra in rows:
+        for row in rows:
+            x, y, _z, yaw, extra = row[:5]
             target = layer
             if cls == "BP_DropPod_C":
                 target = "drop_closed" if extra == "closed" else "drop_open"
             text = name
             if extra in RECIPES:
                 text = f"{name}: {RECIPES[extra]['name']}"
+            if len(row) > 5 and row[5]:
+                info = _details(row[5], extra, seen_items)
+                if info:
+                    details[target][str(counts[target])] = info
             counts[target] += 1
             if defaults[target]:
                 length, width = _size(cls, defaults[target])
@@ -162,14 +170,41 @@ def build(raw, by="", filename=""):
         counts["players"] += 1
 
     layers = [{"id": i, "label": name, "group": group, "color": color, "kind": kind, "on": on,
-               "count": counts[i], "items": items[i], "icon": _icon(i)}
+               "count": counts[i], "items": items[i], "icon": _icon(i), **({"details": details[i]} if details[i] else {})}
               for i, name, group, color, kind, on, _size_ in LAYERS if counts[i]]
     return {
         "meta": {**raw["meta"], "by": by, "filename": filename or raw.get("meta", {}).get("filename", "")},
         "bounds": BOUNDS,
         "labels": labels,
+        # Namen der Items, die in Inventaren vorkommen: Klasse -> [Name, flüssig?]
+        "items": {c: [DATA["items"].get(c) or _pretty(c), bool(ITEMS.get(c, {}).get("liquid"))] for c in sorted(seen_items)},
         "layers": _node_layers(raw["nodes"], label) + layers,
     }
+
+
+INVENTORY_PARTS = ("in", "out", "fuel", "store", "boost")
+
+
+def _details(info, recipe, seen):
+    """Rohdaten aus extract.mjs -> Hover: {"recipe": Name, "inv": [[Teil, [[Klasse, Menge], ...]], ...], ...}.
+    Flüssigkeiten stehen im Spielstand in Litern, angezeigt werden m³."""
+    out = {k: info[k] for k in ("eff", "clock", "boost", "prog", "paused") if k in info}
+    if recipe in RECIPES:
+        out["recipe"] = RECIPES[recipe]["name"]
+    inv = info.get("inv") or {}
+    parts = []
+    for part in INVENTORY_PARTS:
+        stacks = inv.get(part) or {}
+        rows = []
+        for item, n in sorted(stacks.items(), key=lambda kv: -kv[1]):
+            seen.add(item)
+            amount = round(n / 1000, 1) if ITEMS.get(item, {}).get("liquid") else n
+            rows.append([item, amount])
+        if rows:
+            parts.append([part, rows])
+    if parts:
+        out["inv"] = parts
+    return out if (parts or len(out) > ("recipe" in out)) else None
 
 
 NODE_COLORS = {

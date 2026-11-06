@@ -63,8 +63,56 @@ const wires = [];
 const removed = new Set();
 const used = new Set();
 
-function thing(cls, t, q, extra = '') {
-  (things[cls] ||= []).push([round(t.x), round(t.y), round(t.z), yaw(q), extra]);
+function thing(cls, t, q, extra = '', info = null) {
+  const row = [round(t.x), round(t.y), round(t.z), yaw(q), extra];
+  if (info) row.push(info);
+  (things[cls] ||= []).push(row);
+}
+
+/* Inventare hängen als eigene Komponenten an der Maschine (…Build_X_C_123.InputInventory) */
+const components = new Map();
+for (const level of Object.values(save.levels)) {
+  for (const obj of level.objects) if (obj.type !== 'SaveEntity') components.set(obj.instanceName, obj);
+}
+// Eigenschaft der Maschine -> Abschnitt im Hover (in, out, fuel, store, boost)
+const INVENTORIES = [
+  ['mInputInventory', 'in'], ['mOutputInventory', 'out'], ['mFuelInventory', 'fuel'],
+  ['mStorageInventory', 'store'], ['mInventory', 'store'], ['mStorage', 'store'], ['mInventoryPotential', 'boost'],
+];
+
+function stacks(ref) {
+  const comp = ref?.pathName && components.get(ref.pathName);
+  const out = {};
+  for (const stack of prop(comp || {}, 'mInventoryStacks')?.values || []) {
+    const item = classOf(stack.properties?.Item?.value?.itemReference?.pathName);
+    const n = stack.properties?.NumItems?.value || 0;
+    if (item && n > 0) out[item] = (out[item] || 0) + n;
+  }
+  return out;
+}
+
+/** Was im Hover steht: Inventare, Auslastung, Takt, Fortschritt. null, wenn es nichts zu zeigen gibt. */
+function details(obj) {
+  const info = {};
+  for (const [name, part] of INVENTORIES) {
+    const ref = value(obj, name);
+    if (!ref?.pathName) continue;
+    const found = stacks(ref);
+    if (!Object.keys(found).length) continue;
+    const into = (info.inv ||= {});
+    into[part] = into[part] || {};
+    for (const [item, n] of Object.entries(found)) into[part][item] = (into[part][item] || 0) + n;
+  }
+  const span = value(obj, 'mLastProductivityMeasurementDuration');
+  if (span > 0) info.eff = Math.min(100, round((100 * (value(obj, 'mLastProductivityMeasurementProduceDuration') || 0)) / span));
+  const clock = value(obj, 'mCurrentPotential');
+  if (typeof clock === 'number' && Math.abs(clock - 1) > 0.001) info.clock = round(clock * 1000) / 10;
+  const boost = value(obj, 'mCurrentProductionBoost');
+  if (typeof boost === 'number' && boost > 1.001) info.boost = round(boost * 100) / 100;
+  const progress = value(obj, 'mCurrentManufacturingProgress');
+  if (typeof progress === 'number' && round(progress * 100) > 0) info.prog = round(progress * 100);
+  if (value(obj, 'mIsProductionPaused')) info.paused = true;
+  return Object.keys(info).length ? info : null;
 }
 
 for (const level of Object.values(save.levels)) {
@@ -122,7 +170,7 @@ for (const level of Object.values(save.levels)) {
     if (t.x === 0 && t.y === 0 && t.z === 0) continue;
     let extra = classOf(value(obj, 'mCurrentRecipe')?.pathName);
     if (cls === 'BP_DropPod_C') extra = value(obj, 'mHasBeenOpened') ? 'open' : 'closed';
-    thing(cls, t, q, extra);
+    thing(cls, t, q, extra, cls.startsWith('Build_') || cls.startsWith('BP_') ? details(obj) : null);
   }
 }
 

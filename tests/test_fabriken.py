@@ -297,3 +297,22 @@ def test_map_drawings(client):
     assert client.delete(f"/karte/zeichnungen/{mark['id']}", headers=send).status_code == 200
     assert client.delete(f"/karte/zeichnungen/{mark['id']}", headers=send).status_code == 404
     assert client.get("/karte/zeichnungen", headers=ADMIN).json["marks"] == []
+
+
+def test_machine_details_for_hover():
+    raw = json.loads(json.dumps(RAW))
+    raw["things"]["Build_SmelterMk1_C"] = [[0, 0, 0, 0, "Recipe_IngotIron_C",
+                                           {"inv": {"in": {"Desc_OreIron_C": 50}, "out": {"Desc_IronIngot_C": 7}},
+                                            "eff": 87, "clock": 150}]]
+    raw["things"]["Build_WaterPump_C"] = [[0, 0, 0, 0, "", {"inv": {"out": {"Desc_Water_C": 48500}}, "eff": 100}]]
+    raw["things"]["Build_ConstructorMk1_C"].append([1, 1, 0, 0, "Recipe_IronPlate_C", {}])  # nichts zu zeigen
+    world = build(raw, "Simon")
+    layers = {l["id"]: l for l in world["layers"]}
+    smelter = next(v for v in layers["factories"]["details"].values() if v.get("clock"))
+    assert smelter == {"eff": 87, "clock": 150, "recipe": RECIPES["Recipe_IngotIron_C"]["name"],
+                       "inv": [["in", [["Desc_OreIron_C", 50]]], ["out", [["Desc_IronIngot_C", 7]]]]}
+    assert len(layers["factories"]["details"]) == 1  # der leere Constructor bekommt keinen Eintrag
+    assert layers["miners"]["details"]["0"]["inv"] == [["out", [["Desc_Water_C", 48.5]]]]  # Liter -> m³
+    assert world["items"]["Desc_Water_C"] == ["Water", True] and world["items"]["Desc_OreIron_C"][1] is False
+    assert all((ICONS / "item" / f"{c}.png").exists() for c in world["items"])
+    assert "details" not in layers["pillars"]
