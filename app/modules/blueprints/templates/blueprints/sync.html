@@ -72,6 +72,22 @@
         </div>
       </form>
     </div>
+    <div class="card mb-3">
+      <div class="card-header"><i class="fas fa-key mr-1"></i>Nur den Sync-Schlüssel</div>
+      <div class="card-body">
+        <p class="small">Für den Fall, dass das Skript schon eingerichtet ist und nur ein neuer Schlüssel fehlt. In <code>satis_sync.ini</code> unter <code>[satis]</code> bei <code>token =</code> einfügen.</p>
+        {% if token %}
+        <div class="alert alert-warning small mb-3">
+          <strong>Dein neuer Sync-Schlüssel</strong>, nur jetzt sichtbar:
+          <input class="form-control form-control-sm mt-1" value="{{ token }}" readonly onclick="this.select()" aria-label="Sync-Schlüssel">
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('blueprints.token') }}" data-no-nav data-confirm="Neuen Schlüssel erstellen? Der alte hört dann auf zu funktionieren.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-secondary"><i class="fas fa-key mr-1"></i>{{ 'Noch einen neuen erstellen' if token else 'Schlüssel erstellen' }}</button>
+        </form>
+      </div>
+    </div>
     {% if me.role == 'admin' %}
     <div class="card">
       <div class="card-header"><i class="fas fa-user-shield mr-1"></i>Admin: Cloudflare-Token</div>

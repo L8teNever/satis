@@ -147,7 +147,7 @@ def api_list():
 
 @bp.get("/token")
 def token_page():
-    return redirect(url_for("blueprints.index"))
+    return redirect(url_for("blueprints.sync"))
 
 
 @bp.post("/token")
@@ -155,7 +155,8 @@ def token():
     """Neuer Sync-Schlüssel für den eigenen Nutzer. Ein alter verliert dabei seine Gültigkeit."""
     if g.get("via_token"):
         abort(403)
-    return render_template("blueprints/index.html", rows=_rows(), token=new_sync_token(g.user["id"]))
+    return render_template("blueprints/sync.html", win_path=WIN_PATH, cf_set=bool(_setting("cf_client_id")),
+                           base=_base_url(), token=new_sync_token(g.user["id"]))
 
 
 def _setting(key):
@@ -192,7 +193,7 @@ WIN_PATH = "%LOCALAPPDATA%\\FactoryGame\\Saved\\SaveGames"
 @bp.get("/sync")
 def sync():
     return render_template("blueprints/sync.html", win_path=WIN_PATH, cf_set=bool(_setting("cf_client_id")),
-                           base=_base_url())
+                           base=_base_url(), token=None)
 
 
 @bp.post("/sync/download")
