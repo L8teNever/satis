@@ -57,6 +57,7 @@ function spline(obj) {
 
 const things = {};  // Klasse -> [x, y, z, yaw, Zusatz]
 const lines = {};   // Klasse -> [[x, y, z, ...], ...]
+const lineInfo = {}; // Klasse -> [Zusatz pro Linie oder null], gleiche Reihenfolge wie lines
 const nodes = [];   // Vorkommen mit Namen, Sorte und Reinheit stehen nicht im Spielstand
 const players = [];
 const wires = [];
@@ -122,6 +123,47 @@ for (const level of Object.values(save.levels)) {
   }
 }
 
+/* Was auf den Bändern liegt, steht seit 1.0 an der Kette (FGConveyorChainActor), nicht am Band selbst */
+const beltItems = new Map();  // Band -> {Item: Anzahl}
+const hotbars = new Map();    // Spielfigur -> [Rezept oder '', ...]
+for (const level of Object.values(save.levels)) {
+  for (const obj of level.objects) {
+    const sp = obj.specialProperties;
+    if (sp?.type === 'ConveyorChainActorSpecialProperties' && Array.isArray(sp.items)) {
+      const offset = sp.firstChainItemIndex || 0;
+      for (const belt of sp.beltsInChain || []) {
+        if (!(belt.lastItemIndex >= belt.firstItemIndex) || belt.firstItemIndex < 0) continue;
+        const found = {};
+        for (const it of sp.items.slice(belt.firstItemIndex - offset, belt.lastItemIndex - offset + 1)) {
+          const item = classOf(it?.item?.itemReference?.pathName);
+          if (item) found[item] = (found[item] || 0) + 1;
+        }
+        if (Object.keys(found).length) beltItems.set(belt.beltRef?.pathName, found);
+      }
+    }
+    if (classOf(obj.typePath) === 'BP_PlayerState_C') {
+      const pawn = value(obj, 'mOwnedPawn')?.pathName;
+      const bars = prop(obj, 'mPlayerHotbars')?.values || [];
+      const bar = components.get(bars[value(obj, 'mCurrentHotbarIndex') || 0]?.pathName);
+      if (pawn && bar) {
+        hotbars.set(pawn, (prop(bar, 'mShortcuts')?.values || []).map((ref) => {
+          const shortcut = components.get(ref?.pathName);
+          return classOf(value(shortcut || {}, 'mRecipeToActivate')?.pathName) || '';
+        }));
+      }
+    }
+  }
+}
+
+function slots(ref) {
+  const comp = ref?.pathName && components.get(ref.pathName);
+  return (prop(comp || {}, 'mInventoryStacks')?.values || []).map((stack) => {
+    const item = classOf(stack.properties?.Item?.value?.itemReference?.pathName);
+    const n = stack.properties?.NumItems?.value || 0;
+    return item && n > 0 ? [item, n] : null;
+  });
+}
+
 for (const level of Object.values(save.levels)) {
   for (const obj of level.objects) {
     if (obj.type !== 'SaveEntity' || removed.has(obj.instanceName)) continue;
@@ -145,12 +187,19 @@ for (const level of Object.values(save.levels)) {
       continue;
     }
     if (cls === 'Char_Player_C') {
+      const equip = ['mHeadEquipmentSlot', 'mBodyEquipmentSlot', 'mArmsEquipmentSlot', 'mBackEquipmentSlot', 'mLegsEquipmentSlot']
+        .flatMap((name) => slots(value(obj, name)).filter(Boolean).map(([item]) => item));
+      const health = components.get(value(obj, 'mHealthComponent')?.pathName);
       players.push({
         name: value(obj, 'mCachedPlayerName') || '',
         x: round(t.x),
         y: round(t.y),
         z: round(t.z),
         yaw: yaw(q),
+        inventory: slots(value(obj, 'mInventory')),
+        equipment: equip,
+        hotbar: hotbars.get(obj.instanceName) || [],
+        health: health ? value(health, 'mCurrentHealth') ?? null : null,
       });
       continue;
     }
@@ -165,6 +214,11 @@ for (const level of Object.values(save.levels)) {
     const line = spline(obj);
     if (line) {
       (lines[cls] ||= []).push(line);
+      let info = null;
+      if (beltItems.has(obj.instanceName)) info = { items: beltItems.get(obj.instanceName) };
+      const fluid = value(obj, 'mFluidBox')?.value;
+      if (typeof fluid === 'number' && fluid > 0.05) info = { fluid: Math.round(fluid * 10) / 10 };
+      (lineInfo[cls] ||= []).push(info);
       continue;
     }
     if (t.x === 0 && t.y === 0 && t.z === 0) continue;
@@ -181,6 +235,6 @@ fs.writeFileSync(output, JSON.stringify({
     seconds: h.playDurationSeconds, savedAt: Number(h.saveDateTime), creative: !!h.creativeModeEnabled,
     modded: !!h.isModdedSave,
   },
-  things, lines, wires, players, used: [...used],
+  things, lines, lineInfo, wires, players, used: [...used],
   nodes: nodes.map((n) => ({ ...n, used: used.has(n.id) })),
 }));

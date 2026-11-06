@@ -11,7 +11,7 @@
   const NODE_ICONS = {
     "Iron Ore": "iron", "Copper Ore": "copper", Limestone: "stone", Coal: "coal", "Caterium Ore": "gold",
     "Crude Oil": "oil", Sulfur: "sulfur", Bauxite: "bauxite", "Raw Quartz": "quartz", Uranium: "uranium",
-    SAM: "sam", "Nitrogen Gas": "nitrogen", Water: "water", Geysir: "geyser",
+    SAM: "sam", "Nitrogen Gas": "nitrogen", Water: "water", Geysir: "geyser", "Crude Oil Well": "oil", LiquidOilWell: "oil",
   };
   const WORLD_ICONS = { drop_closed: "harddrive", drop_open: "harddrive", somersloops: "somersloop", mercer: "mercer" };
   /* Reinheit wie auf den üblichen Satisfactory-Karten: rot unrein, gelb normal, grün rein */
@@ -239,88 +239,115 @@
       }
     }
 
+    /* Laufrichtung der Bänder: kleine Pfeile entlang der Linie, sobald man nah genug dran ist */
+    function drawArrows(l, sx, sy, w, h) {
+      if (view.s < 0.012) return;
+      const gap = 46;  // Abstand der Pfeile in Pixeln
+      const size = Math.min(5, Math.max(3, view.s * 120));
+      ctx.fillStyle = "rgba(20, 16, 8, .85)";
+      ctx.beginPath();
+      for (const line of l.items) {
+        let carry = gap / 2;
+        for (let i = 2; i < line.length; i += 2) {
+          const x1 = sx(line[i - 2]), y1 = sy(line[i - 1]), x2 = sx(line[i]), y2 = sy(line[i + 1]);
+          const len = Math.hypot(x2 - x1, y2 - y1);
+          if ((x1 < -20 && x2 < -20) || (y1 < -20 && y2 < -20) || (x1 > w + 20 && x2 > w + 20) || (y1 > h + 20 && y2 > h + 20)) {
+            carry = (carry - len) % gap;
+            if (carry < 0) carry += gap;
+            continue;
+          }
+          const ux = (x2 - x1) / (len || 1), uy = (y2 - y1) / (len || 1);
+          for (let d = carry; d < len; d += gap) {
+            const px = x1 + ux * d, py = y1 + uy * d;
+            ctx.moveTo(px + ux * size, py + uy * size);
+            ctx.lineTo(px - ux * size - uy * size, py - uy * size + ux * size);
+            ctx.lineTo(px - ux * size * 0.3, py - uy * size * 0.3);
+            ctx.lineTo(px - ux * size + uy * size, py - uy * size - ux * size);
+            ctx.closePath();
+          }
+          carry = ((carry - len) % gap + gap) % gap;
+        }
+      }
+      ctx.fill();
+    }
+
+    /* Spieler wie auf der Karte im Spiel: runder Marker mit Pionier, Stiel zur genauen Position,
+       dort ein kleiner Kegel in Blickrichtung */
+    const PLAYER_HEAD = { dx: -18, dy: -30, r: 15 };
+    // Das Pionier-Symbol kommt aus Font Awesome, die Schrift lädt evtl. erst nach dem ersten Zeichnen
+    if (document.fonts && document.fonts.load) document.fonts.load('900 15px "Font Awesome 5 Free"').then(() => redraw()).catch(() => {});
     function drawPlayers(l, sx, sy, w, h) {
       const it = l.items;
-      const hasYaw = it.length % 4 === 0;
-      const stride = hasYaw ? 4 : 3;
-
-      for (let i = 0, pIdx = 0; i < it.length; i += stride, pIdx++) {
+      const stride = it.length % 4 === 0 ? 4 : 3;
+      for (let i = 0, n = 0; i < it.length; i += stride, n++) {
         const px = sx(it[i]), py = sy(it[i + 1]);
-        if (px < -60 || py < -60 || px > w + 60 || py > h + 60) continue;
-        const yawDeg = hasYaw ? it[i + 2] : 0;
-        const a = (yawDeg * Math.PI) / 180;
-        const labelIdx = hasYaw ? it[i + 3] : it[i + 2];
-        const name = (world && world.labels && world.labels[labelIdx]) || "Spieler";
-        const color = PLAYER_COLORS[pIdx % PLAYER_COLORS.length];
-
+        if (px < -80 || py < -80 || px > w + 80 || py > h + 80) continue;
+        const a = ((stride === 4 ? it[i + 2] : 0) * Math.PI) / 180;
+        const name = (world.labels && world.labels[it[i + stride - 1]]) || "Spieler";
+        const color = PLAYER_COLORS[n % PLAYER_COLORS.length];
+        const active = hovered && hovered.type === "player" && hovered.i === i;
+        const { dx, dy, r } = PLAYER_HEAD;
         ctx.save();
         ctx.translate(px, py);
 
-        // 1. Blickfeld-Kegel (Sichtrichtung / FOV)
-        const coneDist = 34;
-        const fov = 0.52;
+        // Blickrichtung
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.arc(0, 0, coneDist, a - fov, a + fov);
+        ctx.arc(0, 0, 26, a - 0.45, a + 0.45);
         ctx.closePath();
-        const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, coneDist);
-        grad.addColorStop(0, color + "77");
+        const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, 26);
+        grad.addColorStop(0, color + "aa");
         grad.addColorStop(1, color + "00");
         ctx.fillStyle = grad;
         ctx.fill();
 
-        // 2. Richtungspfeil / Ausrichtung
-        const tipDist = 17;
-        const wingDist = 11;
-        const wingAngle = 2.4;
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(a) * tipDist, Math.sin(a) * tipDist);
-        ctx.lineTo(Math.cos(a + wingAngle) * wingDist, Math.sin(a + wingAngle) * wingDist);
-        ctx.lineTo(Math.cos(a + Math.PI) * 4, Math.sin(a + Math.PI) * 4);
-        ctx.lineTo(Math.cos(a - wingAngle) * wingDist, Math.sin(a - wingAngle) * wingDist);
-        ctx.closePath();
-        ctx.fillStyle = color;
+        // Stiel und Punkt
         ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 1.5;
-        ctx.fill();
-        ctx.stroke();
-
-        // 3. Spieler-Positionspunkt
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(dx * 0.6, dy * 0.6);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.arc(0, 0, 2.2, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
 
-        // 4. Name mit Hintergrund-Badge
-        ctx.font = "bold 12px Lato, sans-serif";
-        const tw = ctx.measureText(name).width;
-        const bw = tw + 14;
-        const bh = 20;
-        const bx = -bw / 2;
-        const by = -28;
-
-        ctx.fillStyle = "rgba(16, 24, 32, 0.88)";
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        if (ctx.roundRect) {
-          ctx.beginPath();
-          ctx.roundRect(bx, by, bw, bh, 4);
-          ctx.fill();
-          ctx.stroke();
-        } else {
-          ctx.fillRect(bx, by, bw, bh);
-          ctx.strokeRect(bx, by, bw, bh);
-        }
-
+        // Kopf: dunkle Scheibe, weißer Ring, Pionier
+        ctx.shadowColor = "rgba(0, 0, 0, .55)";
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(dx, dy, r, 0, Math.PI * 2);
+        ctx.fillStyle = "#4b5258";
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = active ? 4 : 3;
+        ctx.strokeStyle = active ? color : "#ffffff";
+        ctx.stroke();
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(name, 0, by + bh / 2);
+        ctx.font = '900 15px "Font Awesome 5 Free"';
+        ctx.fillText("", dx, dy + 1);  // fa-user-astronaut
 
+        // Name
+        ctx.font = "bold 12px Lato, sans-serif";
+        const bw = ctx.measureText(name).width + 12;
+        const bx = dx + r + 4, by = dy - 9;
+        ctx.fillStyle = "rgba(16, 24, 32, .88)";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx, by, bw, 18, 4); else ctx.rect(bx, by, bw, 18);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "left";
+        ctx.fillText(name, bx + 6, by + 9.5);
         ctx.restore();
       }
     }
@@ -421,11 +448,12 @@
       layers.forEach((l) => {
         if (l.kind === "player" || !shown(l) || !painters[l.kind]) return;
         painters[l.kind](l, sx, sy, w, h);
+        if (l.id === "belts") drawArrows(l, sx, sy, w, h);
       });
       // Planung über der Welt, Spieler ganz oben
       if (shown(marksLayer)) marks.forEach((m) => drawMark(m, sx, sy));
       if (draft) drawMark(draft, sx, sy);
-      if (hovered && shown(hovered.l)) outline(hovered.l.items, hovered.i, sx, sy);
+      highlight(sx, sy);
       layers.forEach((l) => { if (l.kind === "player" && shown(l)) drawPlayers(l, sx, sy, w, h); });
     }
 
@@ -555,22 +583,47 @@
         .catch((err) => { showInfo(err.message); loadMarks(); });
     }
 
-    /* ------------------------------------------------------------ Hover über Maschinen
-       Gebäude mit Inventar oder Zustand (layers.py: "details") zeigen beim Drüberfahren, was drin ist.
-       Am Handy reicht Antippen. */
+    /* ------------------------------------------------------------ Hover
+       Maschinen, Bänder, Rohre, Vorkommen und Spieler zeigen beim Drüberfahren, was los ist.
+       Am Handy reicht Antippen. Daten kommen aus layers.py ("details"). */
     const tip = document.createElement("div");
     tip.className = "s-map-tip";
     tip.hidden = true;
     canvas.parentNode.append(tip);
+    let hovered = null;  // { type, l, i } = Art, Ebene und Startindex im items-Array
     const MACHINES = new Set(["factories", "miners", "generators", "storage"]);  // auch leer anzeigen
-    let hovered = null;  // { l, i } = Ebene und Startindex im items-Array
     const PARTS = { in: "Eingang", out: "Ausgang", fuel: "Brennstoff", store: "Lager", boost: "Shards und Somersloops" };
+    const PURITY_NAME = { 2: "Rein", 1: "Normal", 0.5: "Unrein" };
+    const effColor = (e) => (e >= 95 ? "#5fd068" : e >= 50 ? "#f2b33d" : "#e8564a");
+    const detail = (h) => (h.l.details && h.l.details[String(h.i / (h.type === "line" ? 1 : STRIDE_OF[h.type]))]) || null;
+    const STRIDE_OF = { rect: 6, player: 4, node: 5 };
 
-    function machineAt(px, py) {
+    /* Was liegt unter dem Zeiger? Spieler vor Vorkommen vor Gebäuden vor Linien. */
+    function hitAt(px, py) {
       if (!world) return null;
       const [wx, wy] = toWorld(px, py);
+      const { w, h } = size();
+      for (const l of world.layers) {
+        if (l.kind !== "player" || !shown(l) || l.items.length % 4) continue;
+        for (let i = 0; i < l.items.length; i += 4) {
+          const x = (l.items[i] - view.x) * view.s + w / 2, y = (l.items[i + 1] - view.y) * view.s + h / 2;
+          const { dx, dy, r } = PLAYER_HEAD;
+          if (Math.hypot(px - x - dx, py - y - dy) <= r + 3 || Math.hypot(px - x, py - y) <= 7) return { type: "player", l, i };
+        }
+      }
+      const radius = markerRadius(w, h);
+      let best = null, dist = Infinity;
+      for (const l of world.layers) {
+        if (l.kind !== "node" || !shown(l)) continue;
+        for (let i = 0; i < l.items.length; i += 5) {
+          if (!visibleNode(l.items, i)) continue;
+          const d = Math.hypot(l.items[i] - wx, l.items[i + 1] - wy) * view.s;
+          if (d <= radius * 1.1 && d < dist) { dist = d; best = { type: "node", l, i }; }
+        }
+      }
+      if (best) return best;
       const pad = 3 / view.s;
-      let best = null, area = Infinity;
+      let area = Infinity;
       for (const l of world.layers) {
         if (l.kind !== "rect" || !l.details || !shown(l)) continue;
         const it = l.items;
@@ -582,99 +635,186 @@
           const a = it[i + 2] * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
           const lx = dx * c + dy * s, ly = -dx * s + dy * c;
           if (Math.abs(lx) <= it[i + 3] / 2 + pad && Math.abs(ly) <= it[i + 4] / 2 + pad) {
-            // Liegen Gebäude übereinander (z. B. Lager auf Fundament), gewinnt das kleinere
-            const size = it[i + 3] * it[i + 4];
-            if (size < area) { area = size; best = { l, i }; }
+            const sz = it[i + 3] * it[i + 4];  // übereinander (Lager auf Fundament): das kleinere gewinnt
+            if (sz < area) { area = sz; best = { type: "rect", l, i }; }
           }
         }
+      }
+      if (best) return best;
+      const reach = 6 / view.s;
+      for (const l of world.layers) {
+        if (l.kind !== "line" || !l.details || !shown(l)) continue;
+        l.items.forEach((line, n) => {
+          for (let i = 2; i < line.length; i += 2) {
+            const x1 = line[i - 2], y1 = line[i - 1], x2 = line[i], y2 = line[i + 1];
+            if (wx < Math.min(x1, x2) - reach || wx > Math.max(x1, x2) + reach
+                || wy < Math.min(y1, y2) - reach || wy > Math.max(y1, y2) + reach) continue;
+            const d = segment(wx, wy, x1, y1, x2, y2);
+            if (d < reach && d < dist) { dist = d; best = { type: "line", l, i: n }; }
+          }
+        });
       }
       return best;
     }
 
-    function amount(n, liquid) {
-      return liquid ? `${n.toLocaleString("de-DE", { maximumFractionDigits: 1 })} m³` : n.toLocaleString("de-DE");
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text !== undefined) e.textContent = text;
+      return e;
+    };
+    function iconImg(src, cls) {
+      const img = el("img", cls);
+      img.src = src;
+      img.alt = "";
+      img.onerror = () => { img.style.visibility = "hidden"; };
+      return img;
+    }
+    const itemName = (cls) => ((world.items && world.items[cls]) || [cls.replace(/^(Desc_|BP_EquipmentDescriptor)|_C$/g, ""), false]);
+    const amount = (n, liquid) => (liquid ? `${n.toLocaleString("de-DE", { maximumFractionDigits: 1 })} m³` : n.toLocaleString("de-DE"));
+
+    function header(icon, title, sub) {
+      const head = el("div", "s-map-tip-head");
+      if (icon) head.append(iconImg(icon));
+      const t = el("div");
+      t.append(el("strong", "", title));
+      if (sub) t.append(el("div", "s-map-tip-sub", sub));
+      head.append(t);
+      tip.append(head);
+    }
+    function facts(list) {
+      if (!list.length) return;
+      const row = el("div", "s-map-tip-facts");
+      list.forEach(([text, c]) => {
+        const f = el("span", "", text);
+        f.style.borderColor = c;
+        f.style.color = c;
+        row.append(f);
+      });
+      tip.append(row);
+    }
+    function itemRows(title, rows) {
+      tip.append(el("div", "s-map-tip-part", title));
+      rows.forEach(([cls, n]) => {
+        const [name, liquid] = itemName(cls);
+        const r = el("div", "s-map-tip-row");
+        r.append(iconImg(`${ICON_BASE}item/${cls}.png`), el("span", "", name), el("span", "s-map-tip-n", amount(n, liquid)));
+        tip.append(r);
+      });
+    }
+    /* Slots wie im Spiel: Kästchen mit Icon und Anzahl unten rechts */
+    function grid(title, cells, columns) {
+      tip.append(el("div", "s-map-tip-part", title));
+      const g = el("div", "s-map-tip-grid");
+      g.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+      cells.forEach((c) => {
+        const cell = el("div", "s-map-tip-slot");
+        if (c) {
+          cell.title = c.title;
+          cell.append(iconImg(c.icon));
+          if (c.n > 1) cell.append(el("span", "", c.n.toLocaleString("de-DE")));
+        }
+        g.append(cell);
+      });
+      tip.append(g);
     }
 
-    function fillTip(hit) {
-      const { l, i } = hit;
-      const d = (l.details && l.details[String(i / 6)]) || {};
+    function fillRect(h, d) {
+      const { l, i } = h;
       const label = world.labels[l.items[i + 5]] || l.label;
-      const [name, recipe] = label.includes(": ") ? label.split(/: (.*)/s) : [label, d.recipe || ""];
-      tip.replaceChildren();
-      const head = document.createElement("div");
-      head.className = "s-map-tip-head";
-      const img = document.createElement("img");
-      img.src = ICON_BASE + iconName(l);
-      img.alt = "";
-      const title = document.createElement("div");
-      const strong = document.createElement("strong");
-      strong.textContent = name;
-      title.append(strong);
-      if (recipe) {
-        const sub = document.createElement("div");
-        sub.className = "s-map-tip-sub";
-        sub.textContent = recipe;
-        title.append(sub);
-      }
-      head.append(img, title);
-      tip.append(head);
-
-      const facts = [];
-      if (d.paused) facts.push(["Pausiert", "#f2b33d"]);
-      if (d.eff !== undefined) facts.push([`Auslastung ${d.eff} %`, d.eff >= 95 ? "#5fd068" : d.eff >= 50 ? "#f2b33d" : "#e8564a"]);
-      if (d.clock !== undefined) facts.push([`Takt ${d.clock.toLocaleString("de-DE")} %`, "#2fb8ff"]);
-      if (d.boost !== undefined) facts.push([`Boost ×${d.boost.toLocaleString("de-DE")}`, "#d040d0"]);
-      if (d.prog !== undefined) facts.push([`Fortschritt ${d.prog} %`, "#aaaaaa"]);
-      if (facts.length) {
-        const row = document.createElement("div");
-        row.className = "s-map-tip-facts";
-        facts.forEach(([text, c]) => {
-          const f = document.createElement("span");
-          f.textContent = text;
-          f.style.borderColor = c;
-          f.style.color = c;
-          row.append(f);
-        });
-        tip.append(row);
-      }
+      const [name, recipe] = label.includes(": ") ? label.split(/: (.*)/s) : [label, (d && d.recipe) || ""];
+      d = d || {};
+      header(ICON_BASE + iconName(l), name, recipe);
+      const list = [];
+      if (d.paused) list.push(["Pausiert", "#f2b33d"]);
+      if (d.eff !== undefined) list.push([`Auslastung ${d.eff} %`, effColor(d.eff)]);
+      if (d.clock !== undefined) list.push([`Takt ${d.clock.toLocaleString("de-DE")} %`, "#2fb8ff"]);
+      if (d.boost !== undefined) list.push([`Boost ×${d.boost.toLocaleString("de-DE")}`, "#d040d0"]);
+      if (d.prog !== undefined) list.push([`Fortschritt ${d.prog} %`, "#aaaaaa"]);
+      facts(list);
       if (d.eff !== undefined) {
-        const bar = document.createElement("div");
-        bar.className = "s-map-tip-bar";
-        const fill = document.createElement("span");
+        const bar = el("div", "s-map-tip-bar");
+        const fill = el("span");
         fill.style.width = `${Math.max(0, Math.min(100, d.eff))}%`;
-        fill.style.backgroundColor = d.eff >= 95 ? "#5fd068" : d.eff >= 50 ? "#f2b33d" : "#e8564a";
+        fill.style.backgroundColor = effColor(d.eff);
         bar.append(fill);
         tip.append(bar);
       }
+      (d.inv || []).forEach(([part, rows]) => itemRows(PARTS[part] || part, rows));
+      if (!d.inv) tip.append(el("div", "s-map-tip-empty", "Inventar leer"));
+    }
 
-      (d.inv || []).forEach(([part, rows]) => {
-        const h = document.createElement("div");
-        h.className = "s-map-tip-part";
-        h.textContent = PARTS[part] || part;
-        tip.append(h);
-        rows.forEach(([cls, n]) => {
-          const [itemName, liquid] = (world.items && world.items[cls]) || [cls, false];
-          const r = document.createElement("div");
-          r.className = "s-map-tip-row";
-          const ic = document.createElement("img");
-          ic.src = `${ICON_BASE}item/${cls}.png`;
-          ic.alt = "";
-          ic.onerror = () => { ic.style.visibility = "hidden"; };
-          const nm = document.createElement("span");
-          nm.textContent = itemName;
-          const am = document.createElement("span");
-          am.className = "s-map-tip-n";
-          am.textContent = amount(n, liquid);
-          r.append(ic, nm, am);
-          tip.append(r);
-        });
-      });
-      if (!d.inv) {
-        const empty = document.createElement("div");
-        empty.className = "s-map-tip-empty";
-        empty.textContent = "Inventar leer";
-        tip.append(empty);
+    function fillLine(h, d) {
+      d = d || { name: h.l.label };
+      header(ICON_BASE + iconName(h.l), d.name, h.l.id === "belts" ? "Laufrichtung: siehe Pfeile auf dem Band" : "");
+      const list = [];
+      if (d.len !== undefined) list.push([`${d.len.toLocaleString("de-DE")} m lang`, "#aaaaaa"]);
+      if (d.speed) list.push([`max. ${d.speed.toLocaleString("de-DE")} / min`, "#2fb8ff"]);
+      if (d.flow) list.push([`max. ${d.flow} m³/min`, "#2fb8ff"]);
+      facts(list);
+      if (d.items) itemRows("Gerade auf dem Band", d.items);
+      else if (d.fluid !== undefined) {
+        tip.append(el("div", "s-map-tip-part", "Im Rohr"));
+        tip.append(el("div", "s-map-tip-row s-map-tip-n", `${d.fluid.toLocaleString("de-DE")} m³`));
+      } else if (h.l.id === "belts" || h.l.id === "pipes") tip.append(el("div", "s-map-tip-empty", "Leer"));
+    }
+
+    function fillNode(h) {
+      const { l, i } = h;
+      const it = l.items;
+      const purity = it[i + 3];
+      header(ICON_BASE + iconName(l), `${l.label} (${PURITY_NAME[purity] || "?"})`, it[i + 4] ? "belegt" : "frei");
+      facts([[`X ${Math.round(it[i] / 100).toLocaleString("de-DE")} m · Y ${Math.round(it[i + 1] / 100).toLocaleString("de-DE")} m`, "#aaaaaa"]]);
+      const clocks = [50, 100, 150, 200, 250];
+      let rows = null, unit = "/ min";
+      if (l.node === "ore") rows = [["Miner Mk.1", 30], ["Miner Mk.2", 60], ["Miner Mk.3", 120]];
+      else if (l.node === "oil") { rows = [["Ölpumpe", 60]]; unit = "m³/min"; }
+      else if (l.node === "well") { rows = [["Druck-Satellit", 30]]; unit = "m³/min"; }
+      if (l.node === "geyser") {
+        facts([[`Geothermie ≈ ${{ 0.5: 100, 1: 200, 2: 400 }[purity] || 200} MW`, "#5fd068"]]);
+        return;
       }
+      if (!rows) return;
+      const table = el("table", "s-map-tip-table");
+      const head = el("tr");
+      head.append(el("th", "", ""));
+      clocks.forEach((c) => head.append(el("th", "", `${c} %`)));
+      table.append(head);
+      rows.forEach(([name, base]) => {
+        const tr = el("tr");
+        tr.append(el("th", "", name));
+        clocks.forEach((c) => tr.append(el("td", "", `${(base * purity * 2 * c / 100).toLocaleString("de-DE")}`)));
+        table.append(tr);
+      });
+      tip.append(table);
+      tip.append(el("div", "s-map-tip-empty", unit));
+    }
+
+    function fillPlayer(h, d) {
+      const name = world.labels[h.l.items[h.i + 3]] || "Spieler";
+      d = d || {};
+      header("", name, d.health !== undefined ? `Gesundheit ${d.health}` : "");
+      tip.firstChild.prepend(el("span", "s-map-tip-avatar fas fa-user-astronaut"));
+      if (d.equip && d.equip.length) {
+        grid("Ausrüstung", d.equip.map((c) => ({ icon: `${ICON_BASE}item/${c}.png`, title: itemName(c)[0], n: 1 })), 6);
+      }
+      if (d.hotbar) {
+        grid("Hotbar", d.hotbar.map((s) => (s ? { icon: `${ICON_BASE}building/${s[1]}.png`, title: s[0], n: 1 } : null)), 10);
+      }
+      if (d.inv) {
+        grid("Inventar", d.inv.map((s) => (s ? { icon: `${ICON_BASE}item/${s[0]}.png`, title: `${itemName(s[0])[0]} × ${s[1]}`, n: s[1] } : null)), 8);
+      }
+      if (!d.equip && !d.hotbar && !d.inv) tip.append(el("div", "s-map-tip-empty", "Keine Daten zum Inventar im Spielstand"));
+    }
+
+    function fillTip(h) {
+      tip.replaceChildren();
+      tip.classList.toggle("is-wide", h.type === "player" || h.type === "node");
+      const d = detail(h);
+      if (h.type === "rect") fillRect(h, d);
+      else if (h.type === "line") fillLine(h, d);
+      else if (h.type === "node") fillNode(h);
+      else fillPlayer(h, d);
     }
 
     function placeTip(px, py) {
@@ -688,11 +828,11 @@
       tip.style.top = `${y}px`;
     }
 
+    const sameHit = (a, b) => a && b && a.type === b.type && a.l === b.l && a.i === b.i;
     function hover(px, py) {
-      const hit = machineAt(px, py);
-      const same = hit && hovered && hit.l === hovered.l && hit.i === hovered.i;
+      const hit = hitAt(px, py);
       if (!hit) { hideTip(); return; }
-      if (!same) { hovered = hit; fillTip(hit); redraw(); }
+      if (!sameHit(hit, hovered)) { hovered = hit; fillTip(hit); redraw(); }
       placeTip(px, py);
     }
 
@@ -701,6 +841,37 @@
       hovered = null;
       tip.hidden = true;
       redraw();
+    }
+
+    /* Hervorhebung des Ziels unter dem Zeiger */
+    function highlight(sx, sy) {
+      if (!hovered || !shown(hovered.l)) return;
+      const { type, l, i } = hovered;
+      if (type === "rect") outline(l.items, i, sx, sy);
+      else if (type === "line") {
+        const line = l.items[i];
+        ctx.save();
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(sx(line[0]), sy(line[1]));
+        for (let k = 2; k < line.length; k += 2) ctx.lineTo(sx(line[k]), sy(line[k + 1]));
+        ctx.strokeStyle = "rgba(255, 255, 255, .9)";
+        ctx.lineWidth = Math.min(4, Math.max(1, view.s * 150)) + 5;
+        ctx.stroke();
+        ctx.strokeStyle = l.color;
+        ctx.lineWidth -= 4;
+        ctx.stroke();
+        ctx.restore();
+        if (l.id === "belts") drawArrows({ items: [line] }, sx, sy, Infinity, Infinity);
+      } else if (type === "node") {
+        const r = markerRadius(size().w, size().h) * 1.25;
+        ctx.beginPath();
+        ctx.arc(sx(l.items[i]), sy(l.items[i + 1]), r + 3, 0, Math.PI * 2);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+      }
     }
 
     let hoverAt = null;

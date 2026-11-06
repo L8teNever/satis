@@ -16,9 +16,13 @@ for cls, b in tools["buildings"].items():
     size = b.get("size") or {}
     classes[cls.replace("Desc_", "Build_", 1)] = [b["name"], size.get("width") or 0, size.get("length") or 0]
 items = {k: v["name"] for k, v in tools["items"].items()}
+# Hotbar der Spieler: Rezept -> [Name, Gebäude-Klasse (Icon unter static/icons/building/<Klasse>.png)]
+shortcuts = {k: [r["name"], r["products"][0]["item"]] for k, r in tools["recipes"].items()
+             if r.get("forBuilding") and r.get("products")}
 out = {
     "classes": classes,
     "items": items,
+    "shortcuts": shortcuts,
     "nodes": {k: [v["item"], v["purity"], places[k]["x"], places[k]["y"]] for k, v in nodes.items()},
 }
 json.dump(out, open(sys.argv[4], "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"), sort_keys=True)

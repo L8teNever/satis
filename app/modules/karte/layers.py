@@ -159,13 +159,21 @@ def build(raw, by="", filename=""):
     for cls, lines in raw["lines"].items():
         layer = _line_layer(cls)
         if layer:
-            items[layer] += [_flat(line) for line in lines]
-            counts[layer] += len(lines)
+            extra = raw.get("lineInfo", {}).get(cls) or []
+            for n, line in enumerate(lines):
+                info = _line_details(cls, line, extra[n] if n < len(extra) else None, seen_items)
+                if info:
+                    details[layer][str(counts[layer])] = info
+                items[layer].append(_flat(line))
+                counts[layer] += 1
     items["wires"] = [[w[0], w[1], w[3], w[4]] for w in raw["wires"]]
     counts["wires"] = len(raw["wires"])
     for idx, p in enumerate(raw["players"]):
         name = p.get("name") or (f"Spieler {idx + 1}" if len(raw["players"]) > 1 else "Spieler")
         yaw = p.get("yaw", 0)
+        info = _player_details(p, seen_items)
+        if info:
+            details["players"][str(counts["players"])] = info
         items["players"] += [p["x"], p["y"], yaw, label(name)]
         counts["players"] += 1
 
@@ -183,6 +191,51 @@ def build(raw, by="", filename=""):
 
 
 INVENTORY_PARTS = ("in", "out", "fuel", "store", "boost")
+BELT_SPEED = {"1": 60, "2": 120, "3": 270, "4": 480, "5": 780, "6": 1200}  # Items pro Minute
+PIPE_FLOW = {"Build_Pipeline_C": 300, "Build_PipelineNoIndicator_C": 300, "Build_PipelineMK2_C": 600,
+             "Build_PipelineMK2_NoIndicator_C": 600}  # m³ pro Minute
+
+
+def _length(line):
+    """Länge einer Linie [x, y, z, ...] in Metern."""
+    return round(sum(((line[i] - line[i - 3]) ** 2 + (line[i + 1] - line[i - 2]) ** 2 + (line[i + 2] - line[i - 1]) ** 2) ** .5
+                     for i in range(3, len(line) - 2, 3)) / 100, 1)
+
+
+def _line_details(cls, line, info, seen):
+    """Hover für Bänder und Rohre: Name, Länge, Tempo, was gerade drauf bzw. drin ist."""
+    name = DATA["classes"].get(cls, [_pretty(cls)])[0]
+    out = {"name": name, "len": _length(line)}
+    belt = re.search(r"ConveyorBeltMk(\d)", cls)
+    if belt:
+        out["speed"] = BELT_SPEED.get(belt.group(1))
+    if cls in PIPE_FLOW:
+        out["flow"] = PIPE_FLOW[cls]
+    info = info or {}
+    if info.get("items"):
+        rows = sorted(info["items"].items(), key=lambda kv: -kv[1])
+        seen.update(item for item, _n in rows)
+        out["items"] = [list(r) for r in rows]
+    if info.get("fluid"):
+        out["fluid"] = info["fluid"]
+    return out
+
+
+def _player_details(p, seen):
+    """Hover für Spieler: Inventar (Slots in Spielreihenfolge, leer = null), Ausrüstung, Hotbar."""
+    out = {}
+    if p.get("inventory"):
+        out["inv"] = p["inventory"]
+        seen.update(s[0] for s in p["inventory"] if s)
+    if p.get("equipment"):
+        out["equip"] = p["equipment"]
+        seen.update(p["equipment"])
+    bar = [DATA.get("shortcuts", {}).get(r) if r else None for r in p.get("hotbar") or []]
+    if any(bar):
+        out["hotbar"] = bar
+    if p.get("health") is not None:
+        out["health"] = round(p["health"])
+    return out
 
 
 def _details(info, recipe, seen):
@@ -237,18 +290,30 @@ def _node_info(node):
     return known[:2] if known else (None, None)
 
 
+def _node_kind(item):
+    """Wie abgebaut wird: Miner (ore), Ölpumpe (oil), Druckextraktor (well) oder Geothermie (geyser)."""
+    if item == "Desc_Geyser_C":
+        return "geyser"
+    if item == "Desc_LiquidOil_C":
+        return "oil"
+    if item in ("Desc_Water_C", "Desc_NitrogenGas_C", "Desc_LiquidOilWell_C"):
+        return "well"
+    return "ore"
+
+
 def _node_layers(nodes, label):
     """Eine Ebene pro Rohstoff. Sorte und Reinheit stehen nicht im Spielstand, sondern in data.json."""
     found = {}
     for n in nodes:
         item, purity = _node_info(n)
-        name = DATA["items"].get(item, _pretty(item or "Unbekannt")) if item != "Desc_Geyser_C" else "Geysir"
+        name = ({"Desc_Geyser_C": "Geysir", "Desc_LiquidOilWell_C": "Crude Oil Well"}.get(item)
+                or DATA["items"].get(item, _pretty(item or "Unbekannt")))
         row = found.setdefault(name, {"item": item, "items": [], "count": 0})
         state = "belegt" if n["used"] else "frei"
         text = ", ".join(x for x in (name, PURITY.get(purity), state) if x)
         row["items"] += [n["x"], n["y"], label(text), purity or 1, int(n["used"])]
         row["count"] += 1
     return [{"id": "node:" + name, "label": name, "group": "Vorkommen", "color": NODE_COLORS.get(row["item"], "#ffffff"),
-             "kind": "node", "on": True, "count": row["count"], "items": row["items"],
+             "kind": "node", "on": True, "count": row["count"], "items": row["items"], "node": _node_kind(row["item"]),
              "icon": f"items/{NODE_ICONS[row['item']]}.png" if row["item"] in NODE_ICONS else ""}
             for name, row in sorted(found.items())]

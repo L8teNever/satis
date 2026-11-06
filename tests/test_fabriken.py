@@ -316,3 +316,28 @@ def test_machine_details_for_hover():
     assert world["items"]["Desc_Water_C"] == ["Water", True] and world["items"]["Desc_OreIron_C"][1] is False
     assert all((ICONS / "item" / f"{c}.png").exists() for c in world["items"])
     assert "details" not in layers["pillars"]
+
+
+def test_belt_pipe_player_and_node_details():
+    raw = json.loads(json.dumps(RAW))
+    raw["lines"]["Build_PipelineMK2_C"] = [[0, 0, 0, 300, 400, 0]]
+    raw["lineInfo"] = {"Build_ConveyorBeltMk1_C": [{"items": {"Desc_OreIron_C": 3, "Desc_Coal_C": 5}}],
+                       "Build_PipelineMK2_C": [{"fluid": 12.5}]}
+    raw["players"][0].update(inventory=[["Desc_OreIron_C", 20], None], equipment=["Desc_Chainsaw_C"],
+                             hotbar=["Recipe_ConstructorMk1_C", ""], health=None)
+    raw["nodes"] = [{"id": k, "x": v[2], "y": v[3], "z": 0, "used": False}
+                    for k, v in DATA["nodes"].items() if v[0] in ("Desc_OreIron_C", "Desc_LiquidOil_C", "Desc_Water_C")][:400]
+    world = build(raw, "Simon")
+    layers = {l["id"]: l for l in world["layers"]}
+    belt = layers["belts"]["details"]["0"]
+    assert belt["speed"] == 60 and belt["items"] == [["Desc_Coal_C", 5], ["Desc_OreIron_C", 3]]
+    assert belt["len"] == round((10 ** 2 + 20 ** 2 + 30 ** 2) ** .5 / 100, 1)
+    assert layers["pipes"]["details"]["0"] == {"name": layers["pipes"]["details"]["0"]["name"], "len": 5.0, "flow": 600,
+                                                "fluid": 12.5}
+    player = layers["players"]["details"]["0"]
+    assert player["inv"] == [["Desc_OreIron_C", 20], None] and player["equip"] == ["Desc_Chainsaw_C"]
+    assert player["hotbar"][0][1] == "Desc_ConstructorMk1_C" and player["hotbar"][1] is None and "health" not in player
+    assert (ICONS / "building" / "Desc_ConstructorMk1_C.png").exists()
+    assert all((ICONS / "item" / f"{c}.png").exists() for c in world["items"])
+    kinds = {l["id"]: l["node"] for l in world["layers"] if l["kind"] == "node"}
+    assert kinds["node:Iron Ore"] == "ore" and kinds.get("node:Crude Oil") == "oil" and kinds.get("node:Water") == "well"
