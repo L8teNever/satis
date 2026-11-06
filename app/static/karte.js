@@ -230,10 +230,63 @@
       ctx.stroke();
     }
 
+    /* Echte Umrisse aus den Spielmodellen (layers.py: world.shapes / labelClass). Ohne Umriss: Rechteck. */
+    function shapeOf(labelIdx) {
+      const cls = world && world.labelClass && world.labelClass[labelIdx];
+      return (cls && world.shapes && world.shapes[cls]) || null;
+    }
+    function classOf(labelIdx) {
+      return (world && world.labelClass && world.labelClass[labelIdx]) || "";
+    }
+    const buildingIcons = new Map();
+    function buildingIcon(cls) {
+      if (!cls) return null;
+      let img = buildingIcons.get(cls);
+      if (!img) {
+        img = new Image();
+        img.onload = () => redraw();
+        img.src = `${ICON_BASE}building/${cls.replace(/^Build_/, "Desc_")}.png`;
+        buildingIcons.set(cls, img);
+      }
+      return img.complete && img.naturalWidth > 0 ? img : null;
+    }
+
+    // Pfad eines Gebäudes: Umriss oder Rechteck, gedreht und an seiner Stelle
+    function buildingPath(it, i, x, y) {
+      const a = it[i + 2] * Math.PI / 180, c = Math.cos(a) * view.s, sn = Math.sin(a) * view.s;
+      const shape = shapeOf(it[i + 5]);
+      if (shape) {
+        ctx.moveTo(x + shape[0] * c - shape[1] * sn, y + shape[0] * sn + shape[1] * c);
+        for (let k = 2; k < shape.length; k += 2) ctx.lineTo(x + shape[k] * c - shape[k + 1] * sn, y + shape[k] * sn + shape[k + 1] * c);
+        ctx.closePath();
+        return;
+      }
+      const lx = it[i + 3] / 2, ly = it[i + 4] / 2;
+      ctx.moveTo(x + c * lx - sn * ly, y + sn * lx + c * ly);
+      ctx.lineTo(x + c * lx + sn * ly, y + sn * lx - c * ly);
+      ctx.lineTo(x - c * lx + sn * ly, y - sn * lx - c * ly);
+      ctx.lineTo(x - c * lx - sn * ly, y - sn * lx + c * ly);
+      ctx.closePath();
+    }
+
+    // Mitte des Umrisses auf dem Bildschirm (Umrisse liegen nicht immer mittig um den Ursprung)
+    function buildingCenter(it, i, x, y) {
+      const shape = shapeOf(it[i + 5]);
+      if (!shape) return [x, y];
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (let k = 0; k < shape.length; k += 2) {
+        minX = Math.min(minX, shape[k]); maxX = Math.max(maxX, shape[k]);
+        minY = Math.min(minY, shape[k + 1]); maxY = Math.max(maxY, shape[k + 1]);
+      }
+      const mx = (minX + maxX) / 2, my = (minY + maxY) / 2, a = it[i + 2] * Math.PI / 180;
+      return [x + (mx * Math.cos(a) - my * Math.sin(a)) * view.s, y + (mx * Math.sin(a) + my * Math.cos(a)) * view.s];
+    }
+
     function drawRects(l, sx, sy, w, h) {
       if (l.id === "power_poles") { drawPoles(l, sx, sy, w, h); return; }
       const it = l.items;
       const s = view.s;
+      const withIcon = [];
       let big = false;
       ctx.fillStyle = l.color;
       ctx.beginPath();
@@ -243,14 +296,9 @@
         if (x < -r || y < -r || x > w + r || y > h + r) continue;
         if (r < 3) { ctx.rect(x - 1, y - 1, 2, 2); continue; }
         if (r >= 10) big = true;
-        const a = it[i + 2] * Math.PI / 180;
-        const cx = Math.cos(a) * s / 2, cy = Math.sin(a) * s / 2;
-        const lx = it[i + 3], ly = it[i + 4];
-        ctx.moveTo(x + cx * lx - cy * ly, y + cy * lx + cx * ly);
-        ctx.lineTo(x + cx * lx + cy * ly, y + cy * lx - cx * ly);
-        ctx.lineTo(x - cx * lx + cy * ly, y - cy * lx - cx * ly);
-        ctx.lineTo(x - cx * lx - cy * ly, y - cy * lx + cx * ly);
-        ctx.closePath();
+        buildingPath(it, i, x, y);
+        // Icon drauf, sobald das Gebäude groß genug ist (Fundamente, Wände usw. nicht, das wäre nur Gewimmel)
+        if (r >= 26 && ICON_LAYERS.has(l.id)) withIcon.push(i);
       }
       if (!big) { ctx.fill(); return; }
       // Nah dran: dunkle Füllung mit Farbe der Ebene drüber und kräftigem Rand
@@ -265,20 +313,30 @@
       ctx.strokeStyle = l.color;
       ctx.stroke();
       ctx.lineJoin = "miter";
+      withIcon.forEach((i) => {
+        const img = buildingIcon(classOf(it[i + 5]));
+        if (!img) return;
+        const [cx, cy] = buildingCenter(it, i, sx(it[i]), sy(it[i + 1]));
+        const size = Math.min(72, Math.min(it[i + 3], it[i + 4]) * s * 0.7);
+        if (size < 14) return;
+        ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
+      });
     }
+    const ICON_LAYERS = new Set(["factories", "miners", "generators", "storage", "base", "stations", "pipe_parts",
+      "attachments", "vehicles", "lifts"]);
 
     function outline(it, i, sx, sy) {
       const x = sx(it[i]), y = sy(it[i + 1]);
-      const a = it[i + 2] * Math.PI / 180;
-      const lx = Math.max(it[i + 3] * view.s, 8) / 2, ly = Math.max(it[i + 4] * view.s, 8) / 2;
       ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(a);
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
       ctx.strokeStyle = "#ffffff";
       ctx.shadowColor = "rgba(0, 0, 0, .8)";
       ctx.shadowBlur = 4;
-      ctx.strokeRect(-lx - 2, -ly - 2, lx * 2 + 4, ly * 2 + 4);
+      ctx.beginPath();
+      if (Math.max(it[i + 3], it[i + 4]) * view.s < 8) ctx.arc(x, y, 6, 0, Math.PI * 2);
+      else buildingPath(it, i, x, y);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -707,12 +765,27 @@
     tip.hidden = true;
     canvas.parentNode.append(tip);
     let hovered = null;  // { type, l, i } = Art, Ebene und Startindex im items-Array
-    const MACHINES = new Set(["factories", "miners", "generators", "storage"]);  // auch leer anzeigen
+    const HOLDS = new Set(["factories", "miners", "generators", "storage", "stations", "vehicles"]);  // haben ein Inventar
+    const BACKDROP = new Set(["foundations", "walls", "beams", "walkways"]);  // Untergrund: alles andere darauf geht vor
     const PARTS = { in: "Eingang", out: "Ausgang", fuel: "Brennstoff", store: "Lager", boost: "Shards und Somersloops" };
     const PURITY_NAME = { 2: "Rein", 1: "Normal", 0.5: "Unrein" };
     const effColor = (e) => (e >= 95 ? "#5fd068" : e >= 50 ? "#f2b33d" : "#e8564a");
     const detail = (h) => (h.l.details && h.l.details[String(h.i / (h.type === "line" ? 1 : STRIDE_OF[h.type]))]) || null;
-    const STRIDE_OF = { rect: 6, player: 4, node: 5 };
+    const STRIDE_OF = { rect: 6, player: 4, node: 5, dot: 3 };
+
+    // Punkt im Umriss? Umrisse sind konvex: liegt der Punkt links von jeder Kante (mit etwas Spielraum)
+    function insideShape(shape, x, y, pad) {
+      let sign = 0;
+      for (let k = 0; k < shape.length; k += 2) {
+        const ax = shape[k], ay = shape[k + 1];
+        const bx = shape[(k + 2) % shape.length], by = shape[(k + 3) % shape.length];
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const d = ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / len;
+        if (!sign) sign = d >= 0 ? 1 : -1;
+        if (d * sign < -pad) return false;
+      }
+      return true;
+    }
 
     /* Was liegt unter dem Zeiger? Spieler vor Vorkommen vor Gebäuden vor Linien. */
     function hitAt(px, py) {
@@ -739,29 +812,41 @@
       }
       const node = best;
       best = null;
-      const pad = 3 / view.s;
-      let area = Infinity;
       for (const l of world.layers) {
-        if (l.kind !== "rect" || !l.details || !shown(l)) continue;
-        const it = l.items;
-        const always = MACHINES.has(l.id);
-        for (let i = 0; i < it.length; i += 6) {
-          if (!always && !l.details[String(i / 6)]) continue;
-          const dx = wx - it[i], dy = wy - it[i + 1];
-          if (Math.abs(dx) > it[i + 3] + pad && Math.abs(dy) > it[i + 3] + pad) continue;
-          const a = it[i + 2] * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
-          const lx = dx * c + dy * s, ly = -dx * s + dy * c;
-          if (Math.abs(lx) <= it[i + 3] / 2 + pad && Math.abs(ly) <= it[i + 4] / 2 + pad) {
-            const sz = it[i + 3] * it[i + 4];  // übereinander (Lager auf Fundament): das kleinere gewinnt
-            if (sz < area) { area = sz; best = { type: "rect", l, i }; }
-          }
+        if (l.kind !== "dot" || !shown(l)) continue;
+        for (let i = 0; i < l.items.length; i += 3) {
+          const d = Math.hypot(l.items[i] - wx, l.items[i + 1] - wy) * view.s;
+          if (d <= radius && d < dist) { dist = d; best = { type: "dot", l, i }; }
         }
       }
+      if (best) return best;
+      dist = Infinity;
+      const rectAt = (backdrop) => {
+        let found = null, area = Infinity;
+        for (const l of world.layers) {
+          if (l.kind !== "rect" || BACKDROP.has(l.id) !== backdrop || !shown(l)) continue;
+          const it = l.items;
+          const pad = (l.id === "power_poles" ? 7 : 3) / view.s;  // Masten sind größer gezeichnet, als sie sind
+          for (let i = 0; i < it.length; i += 6) {
+            const dx = wx - it[i], dy = wy - it[i + 1], reach = it[i + 3] + it[i + 4] + pad;
+            if (Math.abs(dx) > reach || Math.abs(dy) > reach) continue;
+            const a = it[i + 2] * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+            const lx = dx * c + dy * s, ly = -dx * s + dy * c;
+            const shape = shapeOf(it[i + 5]);
+            if (shape ? insideShape(shape, lx, ly, pad) : Math.abs(lx) <= it[i + 3] / 2 + pad && Math.abs(ly) <= it[i + 4] / 2 + pad) {
+              const sz = it[i + 3] * it[i + 4];  // übereinander (Lager auf Pfeiler): das kleinere gewinnt
+              if (sz < area) { area = sz; found = { type: "rect", l, i }; }
+            }
+          }
+        }
+        return found;
+      };
+      best = rectAt(false);
       // Ein Miner steht auf seinem Vorkommen: dann zeigt der Hover den Miner, sonst das Vorkommen
       if (best && (!node || best.l.id === "miners")) return best;
       if (node) return node;
       for (const l of world.layers) {
-        if (l.kind !== "line" || !l.details || !shown(l)) continue;
+        if (l.kind !== "line" || !shown(l)) continue;
         const reach = (l.id === "wires" ? 5 : 6) / view.s;
         l.items.forEach((line, n) => {
           for (let i = 2; i < line.length; i += 2) {
@@ -773,7 +858,7 @@
           }
         });
       }
-      return best;
+      return best || rectAt(true);  // Fundamente und Wände zuletzt, sonst wären Bänder darauf nicht erreichbar
     }
 
     const el = (tag, cls, text) => {
@@ -782,19 +867,22 @@
       if (text !== undefined) e.textContent = text;
       return e;
     };
-    function iconImg(src, cls) {
+    function iconImg(src, cls, fallback) {
       const img = el("img", cls);
-      img.src = src;
       img.alt = "";
-      img.onerror = () => { img.style.visibility = "hidden"; };
+      img.onerror = () => {
+        if (fallback && img.getAttribute("src") !== fallback) img.src = fallback;
+        else img.style.visibility = "hidden";
+      };
+      img.src = src;
       return img;
     }
     const itemName = (cls) => ((world.items && world.items[cls]) || [cls.replace(/^(Desc_|BP_EquipmentDescriptor)|_C$/g, ""), false]);
     const amount = (n, liquid) => (liquid ? `${n.toLocaleString("de-DE", { maximumFractionDigits: 1 })} m³` : n.toLocaleString("de-DE"));
 
-    function header(icon, title, sub) {
+    function header(icon, title, sub, fallback) {
       const head = el("div", "s-map-tip-head");
-      if (icon) head.append(iconImg(icon));
+      if (icon) head.append(iconImg(icon, "", fallback));
       const t = el("div");
       t.append(el("strong", "", title));
       if (sub) t.append(el("div", "s-map-tip-sub", sub));
@@ -852,10 +940,12 @@
       const shards = {}, slots = (d.inv || []).find(([part]) => part === "boost");
       if (slots) slots[1].forEach(([cls, n]) => { shards[cls] = n; });
 
-      let sub = recipe;
+      let sub = recipe || l.label;
       if (!recipe && l.id === "factories") sub = "Kein Rezept eingestellt";
       if (d.mines) sub = `baut ab: ${itemName(d.mines[0])[0]} (${PURITY_NAME[d.mines[1]] || "?"})`;
-      header(ICON_BASE + iconName(l), name, sub);
+      const cls = classOf(l.items[i + 5]);
+      const layerIcon = ICON_BASE + iconName(l);
+      header(cls ? `${ICON_BASE}building/${cls.replace(/^Build_/, "Desc_")}.png` : layerIcon, name, sub, layerIcon);
       if (!recipe && l.id === "factories") tip.querySelector(".s-map-tip-sub").style.color = "#e8564a";
 
       const list = [];
@@ -906,7 +996,20 @@
         });
       }
       (d.inv || []).filter(([part]) => part !== "boost").forEach(([part, rows]) => itemRows(PARTS[part] || part, rows));
-      if (!(d.inv || []).some(([part]) => part !== "boost")) tip.append(el("div", "s-map-tip-empty", "Inventar leer"));
+      if (HOLDS.has(l.id) && !(d.inv || []).some(([part]) => part !== "boost")) tip.append(el("div", "s-map-tip-empty", "Inventar leer"));
+      const about = world.about && world.about[cls];
+      if (about) tip.append(el("div", "s-map-tip-about", about));
+      const m = (v) => (v / 100).toLocaleString("de-DE", { maximumFractionDigits: 1 });
+      facts([[`${shapeOf(l.items[i + 5]) ? "" : "≈ "}${m(l.items[i + 3])} × ${m(l.items[i + 4])} m`, "#aaaaaa"], [place(l.items, i), "#aaaaaa"]]);
+    }
+
+    const place = (it, i) => `X ${Math.round(it[i] / 100).toLocaleString("de-DE")} m · Y ${Math.round(it[i + 1] / 100).toLocaleString("de-DE")} m`;
+
+    /* Sammelsachen in der Welt: Drop Pods, Somersloops, Mercer-Kugeln */
+    function fillDot(h) {
+      const { l, i } = h;
+      header(ICON_BASE + iconName(l), world.labels[l.items[i + 2]] || l.label, l.label);
+      facts([[place(l.items, i), "#aaaaaa"]]);
     }
 
     function fillWire(d) {
@@ -940,7 +1043,7 @@
       const it = l.items;
       const purity = it[i + 3];
       header(ICON_BASE + iconName(l), `${l.label} (${PURITY_NAME[purity] || "?"})`, it[i + 4] ? "belegt" : "frei");
-      facts([[`X ${Math.round(it[i] / 100).toLocaleString("de-DE")} m · Y ${Math.round(it[i + 1] / 100).toLocaleString("de-DE")} m`, "#aaaaaa"]]);
+      facts([[place(it, i), "#aaaaaa"]]);
       const clocks = [50, 100, 150, 200, 250];
       let rows = null, unit = "/ min";
       if (l.node === "ore") rows = [["Miner Mk.1", 30], ["Miner Mk.2", 60], ["Miner Mk.3", 120]];
@@ -990,6 +1093,7 @@
       if (h.type === "rect") fillRect(h, d);
       else if (h.type === "line") fillLine(h, d);
       else if (h.type === "node") fillNode(h);
+      else if (h.type === "dot") fillDot(h);
       else fillPlayer(h, d);
     }
 
@@ -1051,8 +1155,8 @@
             ctx.stroke();
           });
         }
-      } else if (type === "node") {
-        const r = markerRadius(size().w, size().h) * 1.25;
+      } else if (type === "node" || type === "dot") {
+        const r = markerRadius(size().w, size().h) * (type === "dot" ? 0.95 : 1.25);
         ctx.beginPath();
         ctx.arc(sx(l.items[i]), sy(l.items[i + 1]), r + 3, 0, Math.PI * 2);
         ctx.lineWidth = 2;

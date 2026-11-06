@@ -215,7 +215,7 @@ def test_world_layers():
     world = build(RAW, "Simon")
     layers = {l["id"]: l for l in world["layers"]}
     plate = world["labels"][layers["factories"]["items"][5]]
-    assert plate == "Constructor: Iron Plate" and layers["factories"]["items"][3:5] == [1000, 800]
+    assert plate == "Constructor: Iron Plate" and layers["factories"]["items"][3:5] == [890, 960]
     assert layers["pillars"]["count"] == 1 and layers["other"]["count"] == 1
     assert layers["belts"]["items"] == [[0, 0, 10, 20]] and layers["wires"]["items"] == [[0, 0, 1, 1]]
     assert "drop_open" in layers and "drop_closed" not in layers
@@ -375,3 +375,12 @@ def test_machine_rates_and_mined_node():
     assert smelter["rates"] == {"in": [["Desc_OreIron_C", 30.0]], "out": [["Desc_IronIngot_C", 30.0]]}
     assert smelter["power"] == RECIPES["Recipe_IngotIron_C"]["power"]
     assert layers["miners"]["details"]["0"]["mines"] == ["Desc_OreIron_C", 2]
+
+
+def test_hover_knows_buildings_without_inventory():
+    raw = json.loads(json.dumps(RAW))
+    raw["things"] = {"Build_PowerPoleMk1_C": [[1, 2, 0, 0, None]], "Build_Foundation_8x4_01_C": [[3, 4, 0, 0, None]]}
+    world = build(raw, "Simon")
+    assert set(world["labelClass"].values()) == set(raw["things"])
+    assert "Power Line" in world["about"]["Build_PowerPoleMk1_C"]
+    assert all(c in DATA["classes"] for c in world["about"])

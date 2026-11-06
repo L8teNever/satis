@@ -111,6 +111,7 @@ main > .container-fluid { max-width: 120rem; }
 .s-map-tip-row span:first-of-type { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .s-map-tip-n { font-variant-numeric: tabular-nums; font-weight: 700; }
 .s-map-tip-empty { margin-top: .4rem; color: #888; font-style: italic; }
+.s-map-tip-about { margin-top: .4rem; color: #bbb; line-height: 1.3; }
 .s-map-tip.is-wide { width: 21rem; }
 .s-map-tip-avatar { display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; height: 2.2rem; flex: none; font-size: 1.2rem; color: #fff; background-color: #4b5258; border: 2px solid #fff; border-radius: 50%; }
 .s-map-tip-grid { display: grid; gap: 3px; }

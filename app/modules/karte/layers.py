@@ -10,6 +10,8 @@ from pathlib import Path
 from ..fabriken.solver import ITEMS, RECIPES
 
 DATA = json.loads((Path(__file__).parent / "data.json").read_text(encoding="utf-8"))
+# Umrisse der Gebäude von oben aus den Spielmodellen (tools/build_karte_shapes.py): Klasse -> [x, y, x, y, ...] in cm
+SHAPES = json.loads((Path(__file__).parent / "shapes.json").read_text(encoding="utf-8"))
 BOUNDS = {"x": -324698.832031, "y": -375000.0, "size": 750000.0}  # Bereich der Karte in Spielkoordinaten (cm)
 PURITY = {0.5: "Unrein", 1.0: "Normal", 2.0: "Rein"}
 
@@ -131,6 +133,7 @@ def build(raw, by="", filename=""):
     # Hover: Inventar und Zustand pro Gebäude. Schlüssel ist die laufende Nummer in der Ebene.
     details = {row[0]: {} for row in LAYERS}
     seen_items = set()
+    label_class = {}  # Beschriftung -> Gebäude-Klasse, für Umriss und Icon auf der Karte
 
     for cls, rows in raw["things"].items():
         layer = layer_of(cls)
@@ -152,6 +155,10 @@ def build(raw, by="", filename=""):
             counts[target] += 1
             if defaults[target]:
                 length, width = _size(cls, defaults[target])
+                if cls in SHAPES:  # echte Maße statt Schätzung
+                    xs, ys = SHAPES[cls][0::2], SHAPES[cls][1::2]
+                    length, width = max(xs) - min(xs), max(ys) - min(ys)
+                label_class[str(label(text))] = cls
                 items[target] += [x, y, yaw, length, width, label(text)]
             else:
                 items[target] += [x, y, label(text)]
@@ -188,6 +195,10 @@ def build(raw, by="", filename=""):
         "meta": {**raw["meta"], "by": by, "filename": filename or raw.get("meta", {}).get("filename", "")},
         "bounds": BOUNDS,
         "labels": labels,
+        "labelClass": label_class,
+        "shapes": {c: SHAPES[c] for c in sorted(set(label_class.values())) if c in SHAPES},
+        # Hover: was das Gebäude ist, Text aus dem Spiel
+        "about": {c: DATA["classes"][c][3] for c in sorted(set(label_class.values())) if len(DATA["classes"].get(c, [])) > 3},
         # Namen der Items, die in Inventaren vorkommen: Klasse -> [Name, flüssig?]
         "items": {c: [DATA["items"].get(c) or _pretty(c), bool(ITEMS.get(c, {}).get("liquid"))] for c in sorted(seen_items)},
         "layers": _node_layers(raw["nodes"], label) + layers,

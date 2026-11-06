@@ -14,7 +14,9 @@ places = {n["id"]: n for n in json.load(open(sys.argv[3], encoding="utf-8"))["no
 classes = {}
 for cls, b in tools["buildings"].items():
     size = b.get("size") or {}
-    classes[cls.replace("Desc_", "Build_", 1)] = [b["name"], size.get("width") or 0, size.get("length") or 0]
+    # Beschreibung für den Hover: nur der erste Absatz aus dem Spiel
+    text = (b.get("description") or "").split("\n\n")[0].strip()
+    classes[cls.replace("Desc_", "Build_", 1)] = [b["name"], size.get("width") or 0, size.get("length") or 0] + ([text] if text else [])
 items = {k: v["name"] for k, v in tools["items"].items()}
 # Hotbar der Spieler: Rezept -> [Name, Gebäude-Klasse (Icon unter static/icons/building/<Klasse>.png)]
 shortcuts = {k: [r["name"], r["products"][0]["item"]] for k, r in tools["recipes"].items()
