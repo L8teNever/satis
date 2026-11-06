@@ -965,13 +965,22 @@
     root.querySelector("[data-map-zoom-in]").addEventListener("click", () => { const { w, h } = size(); zoom(1.5, w / 2, h / 2); });
     root.querySelector("[data-map-zoom-out]").addEventListener("click", () => { const { w, h } = size(); zoom(1 / 1.5, w / 2, h / 2); });
     root.querySelector("[data-map-fit]").addEventListener("click", () => { fit(); });
-    root.querySelector("[data-map-full]").addEventListener("click", () => { root.classList.toggle("s-map-full"); });
+    root.querySelector("[data-map-full]").addEventListener("click", () => { root.classList.toggle("s-map-full"); stretch(); });
     root.querySelector("[data-map-panel]").addEventListener("click", () => { panel.hidden = !panel.hidden; });
+
+    /* Die Karte reicht bis zum unteren Fensterrand, egal wie hoch Kopfzeile und Leiste gerade sind */
+    function stretch() {
+      if (root.classList.contains("s-map-full")) { root.style.height = ""; return; }
+      const top = root.getBoundingClientRect().top + window.scrollY;
+      root.style.height = Math.max(352, window.innerHeight - top - 12) + "px";
+    }
+    window.addEventListener("resize", stretch);
 
     let started = false;
     function start() {
       if (started) return;
       started = true;
+      stretch();
       if (window.innerWidth < 768) panel.hidden = true; // Am Handy bleibt die Karte frei, die Ebenen klappt man auf
       fit();
       buildPanel();
@@ -997,7 +1006,7 @@
     return {
       root,
       live() { if (started) { watch(true); loadMarks(); } },
-      stop() { alive = false; resize.disconnect(); },
+      stop() { alive = false; resize.disconnect(); window.removeEventListener("resize", stretch); },
     };
   }
 

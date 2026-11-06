@@ -4,5 +4,5 @@
 {% block live %}{% endblock %}
 {% block content %}{% include "karte/_map.html" %}{% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='karte.js') }}"></script>
+<script src="{{ url_for('static', filename='karte.js', v=asset_version) }}"></script>
 {% endblock %}

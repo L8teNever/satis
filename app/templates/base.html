@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-darkly.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/solid.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='satis.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='satis.css', v=asset_version) }}">
   <meta name="satis-assets" content="{{ asset_version }}">
 </head>
 <body{% if me %} data-live-url="{{ url_for('live') }}" data-live-rev="{{ live_rev() }}"{% endif %}>
@@ -66,7 +66,7 @@
 
   <script src="{{ url_for('static', filename='vendor/jquery.slim.min.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
-  <script src="{{ url_for('static', filename='satis.js') }}"></script>
+  <script src="{{ url_for('static', filename='satis.js', v=asset_version) }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
