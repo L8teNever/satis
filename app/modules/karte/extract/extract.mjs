@@ -207,7 +207,10 @@ for (const level of Object.values(save.levels)) {
       const loc = prop(obj, 'mWireInstances')?.values?.[0]?.properties?.Locations;
       if (loc?.length === 2) {
         const [a, b] = loc.map((l) => l.value);
-        wires.push([round(a.x), round(a.y), round(a.z), round(b.x), round(b.y), round(b.z)]);
+        // Enden: …Build_PowerPoleMk1_C_123.PowerConnection -> Klasse des Gebäudes daran
+        const owner = (ref) => classOf((ref?.pathName || '').split('.').slice(0, -1).join('.')).replace(/_\d+$/, '');
+        wires.push([round(a.x), round(a.y), round(a.z), round(b.x), round(b.y), round(b.z),
+          owner(sp.source), owner(sp.target), round(value(obj, 'mCachedLength') || 0)]);
       }
       continue;
     }

@@ -40,7 +40,7 @@ LAYERS = [
     ("base", "HUB und Basis", "Produktion", "#ffffff", "rect", True, (1000, 1000)),
     ("generators", "Kraftwerke", "Strom", "#00bc8c", "rect", True, (2000, 1000)),
     ("power_poles", "Strommasten", "Strom", "#70d0b0", "rect", True, (120, 120)),
-    ("wires", "Stromkabel", "Strom", "#3a8f78", "line", False, None),
+    ("wires", "Stromkabel", "Strom", "#f2c94c", "line", True, None),
     ("players", "Spieler", "Welt", "#00d2ff", "player", True, None),
     ("drop_closed", "Drop Pods, zu", "Welt", "#ff5050", "dot", True, None),
     ("drop_open", "Drop Pods, offen", "Welt", "#885050", "dot", False, None),
@@ -168,6 +168,10 @@ def build(raw, by="", filename=""):
                 counts[layer] += 1
     items["wires"] = [[w[0], w[1], w[3], w[4]] for w in raw["wires"]]
     counts["wires"] = len(raw["wires"])
+    for n, w in enumerate(raw["wires"]):
+        if len(w) >= 9:  # ältere Auszüge kennen die Enden nicht
+            details["wires"][str(n)] = {"name": "Stromkabel", "len": round(w[8] / 100, 1),
+                                        "ends": [_end(w[6]), _end(w[7])]}
     for idx, p in enumerate(raw["players"]):
         name = p.get("name") or (f"Spieler {idx + 1}" if len(raw["players"]) > 1 else "Spieler")
         yaw = p.get("yaw", 0)
@@ -219,6 +223,13 @@ def _line_details(cls, line, info, seen):
     if info.get("fluid"):
         out["fluid"] = info["fluid"]
     return out
+
+
+def _end(cls):
+    """Ende eines Stromkabels: [Name, Gebäude-Klasse fürs Icon (static/icons/building/Desc_….png)]."""
+    if not cls:
+        return ["?", ""]
+    return [DATA["classes"].get(cls, [_pretty(cls)])[0], cls.replace("Build_", "Desc_", 1)]
 
 
 def _player_details(p, seen):

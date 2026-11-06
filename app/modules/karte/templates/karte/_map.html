@@ -1,4 +1,4 @@
-<div class="s-map s-map-page" data-karte data-world="{{ url_for('karte.world') }}" data-status="{{ url_for('karte.status') }}" data-upload="{{ url_for('karte.upload') }}" data-image="{{ url_for('karte.image') }}" data-marks="{{ url_for('karte.marks') }}" data-csrf="{{ csrf_token() }}">
+<div class="s-map s-map-page" data-karte data-world="{{ url_for('karte.world') }}" data-status="{{ url_for('karte.status') }}" data-upload="{{ url_for('karte.upload') }}" data-image="{{ url_for('karte.image') }}" data-marks="{{ url_for('karte.marks') }}" data-tiles="{{ (tiles or {})|tojson|forceescape }}" data-tile-url="{{ url_for('karte.index') }}kacheln" data-csrf="{{ csrf_token() }}">
   <div class="s-map-bar">
     <label class="btn btn-sm btn-primary mb-0"><i class="fas fa-upload mr-1"></i>Spielstand<input id="s-map-file" type="file" accept=".sav" hidden></label>
     <span id="s-map-status" class="small text-muted d-inline-flex align-items-center flex-wrap" style="gap: .3rem;"></span>

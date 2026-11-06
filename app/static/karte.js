@@ -57,6 +57,14 @@
 
     let world = null;
     let image = null;
+
+    /* Schärfere Karten als Kacheln: beim Reinzoomen wird nur der sichtbare Bereich in der passenden Stufe
+       nachgeladen. Bis die feinere Stufe da ist, bleibt die gröbere stehen. */
+    let tileLevels = {};
+    try { tileLevels = JSON.parse(root.dataset.tiles || "{}"); } catch (e) { tileLevels = {}; }
+    const BASES = [["game", "Spielkarte"], ["ground", "Gelände"], ["relief", "Relief"]].filter(([id]) => id in tileLevels);
+    const tiles = new Map();  // "karte/z/x/y" -> Image oder "fehlt"
+    const TILE_CACHE = 900;
     let view = { x: 0, y: 0, s: 0.001 };
     let queued = false;
     let saved = {};
@@ -67,6 +75,7 @@
       free: !!saved.free,
     };
     const closed = new Set(Array.isArray(saved.closed) ? saved.closed : []);
+    let base = saved.base in tileLevels ? saved.base : ("game" in tileLevels ? "game" : (BASES[0] || [null])[0]);
 
     /* Planung */
     let marks = [];
@@ -105,6 +114,52 @@
       view.y += (py - h / 2) / curScale - (py - h / 2) / s;
       view.s = s;
       redraw();
+    }
+
+    function tile(name, z, x, y, load) {
+      const key = `${name}/${z}/${x}/${y}`;
+      let img = tiles.get(key);
+      if (img === undefined) {
+        if (!load) return null;
+        img = new Image();
+        img.onload = () => redraw();
+        img.onerror = () => tiles.set(key, "fehlt");
+        img.src = `${root.dataset.tileUrl}/${key}.jpg`;
+        if (tiles.size >= TILE_CACHE) tiles.delete(tiles.keys().next().value);  // älteste raus
+      } else {
+        tiles.delete(key);  // zuletzt benutzt nach hinten
+      }
+      tiles.set(key, img);
+      return img !== "fehlt" && img.complete && img.naturalWidth > 0 ? img : null;
+    }
+
+    function drawTiles(name, z, sx, sy, w, h, load) {
+      const b = bounds();
+      const n = 2 ** z, size = b.size / n, px = size * view.s;
+      const [x0, y0] = toWorld(0, 0), [x1, y1] = toWorld(w, h);
+      const ax = Math.max(0, Math.floor((x0 - b.x) / size)), bx = Math.min(n - 1, Math.floor((x1 - b.x) / size));
+      const ay = Math.max(0, Math.floor((y0 - b.y) / size)), by = Math.min(n - 1, Math.floor((y1 - b.y) / size));
+      for (let x = ax; x <= bx; x++) {
+        for (let y = ay; y <= by; y++) {
+          const img = tile(name, z, x, y, load);
+          // 1 px überlappen, sonst blitzen feine Fugen zwischen den Kacheln
+          if (img) ctx.drawImage(img, Math.floor(sx(b.x + x * size)), Math.floor(sy(b.y + y * size)), Math.ceil(px) + 1, Math.ceil(px) + 1);
+        }
+      }
+    }
+
+    function drawBase(sx, sy, w, h) {
+      const b = bounds();
+      const max = base ? tileLevels[base] : undefined;
+      const whole = () => image && ctx.drawImage(image, sx(b.x), sy(b.y), b.size * view.s, b.size * view.s);
+      if (max === undefined) { whole(); return; }
+      const ratio = window.devicePixelRatio || 1;
+      const z = Math.max(0, Math.min(max, Math.ceil(Math.log2((b.size * view.s * ratio) / 256))));
+      // Untergrund: das ganze Bild (Spielkarte) bzw. eine grobe Stufe, dann was schon geladen ist, dann die passende Stufe
+      if (base === "game" && image) whole();
+      else drawTiles(base, Math.min(z, 2), sx, sy, w, h, true);
+      for (let k = Math.min(z, 2) + 1; k < z; k++) drawTiles(base, k, sx, sy, w, h, false);
+      if (z > 2 || base !== "game" || !image) drawTiles(base, z, sx, sy, w, h, true);
     }
 
     function toWorld(px, py) {
@@ -189,8 +244,23 @@
     }
 
     function drawLines(l, sx, sy) {
+      if (l.id === "wires") {
+        const lw = Math.min(2.5, Math.max(1, view.s * 60));
+        ctx.beginPath();
+        for (const line of l.items) {
+          ctx.moveTo(sx(line[0]), sy(line[1]));
+          for (let i = 2; i < line.length; i += 2) ctx.lineTo(sx(line[i]), sy(line[i + 1]));
+        }
+        ctx.strokeStyle = "rgba(0, 0, 0, .55)";
+        ctx.lineWidth = lw + 1.5;
+        ctx.stroke();
+        ctx.strokeStyle = l.color;
+        ctx.lineWidth = lw;
+        ctx.stroke();
+        return;
+      }
       ctx.strokeStyle = l.color;
-      ctx.lineWidth = l.id === "wires" ? 1 : Math.min(4, Math.max(1, view.s * 150));
+      ctx.lineWidth = Math.min(4, Math.max(1, view.s * 150));
       ctx.beginPath();
       for (const line of l.items) {
         ctx.moveTo(sx(line[0]), sy(line[1]));
@@ -440,7 +510,8 @@
       const b = bounds();
       const sx = (x) => (x - view.x) * view.s + w / 2;
       const sy = (y) => (y - view.y) * view.s + h / 2;
-      if (image) ctx.drawImage(image, sx(b.x), sy(b.y), b.size * view.s, b.size * view.s);
+      ctx.imageSmoothingQuality = "high";
+      drawBase(sx, sy, w, h);
 
       const painters = { rect: drawRects, line: drawLines, node: drawNodes, dot: drawDots, player: drawPlayers };
       const order = { rect: 0, line: 1, node: 2, dot: 3, player: 5 };
@@ -641,9 +712,9 @@
         }
       }
       if (best) return best;
-      const reach = 6 / view.s;
       for (const l of world.layers) {
         if (l.kind !== "line" || !l.details || !shown(l)) continue;
+        const reach = (l.id === "wires" ? 5 : 6) / view.s;
         l.items.forEach((line, n) => {
           for (let i = 2; i < line.length; i += 2) {
             const x1 = line[i - 2], y1 = line[i - 1], x2 = line[i], y2 = line[i + 1];
@@ -744,7 +815,18 @@
       if (!d.inv) tip.append(el("div", "s-map-tip-empty", "Inventar leer"));
     }
 
+    function fillWire(d) {
+      header(ICON_BASE + "buildings/wires.png", d.name, `${d.len.toLocaleString("de-DE")} m lang`);
+      d.ends.forEach(([name, cls], k) => {
+        tip.append(el("div", "s-map-tip-part", k ? "Nach" : "Von"));
+        const r = el("div", "s-map-tip-row");
+        r.append(iconImg(`${ICON_BASE}building/${cls}.png`), el("span", "", name));
+        tip.append(r);
+      });
+    }
+
     function fillLine(h, d) {
+      if (h.l.id === "wires" && d && d.ends) { fillWire(d); return; }
       d = d || { name: h.l.label };
       header(ICON_BASE + iconName(h.l), d.name, h.l.id === "belts" ? "Laufrichtung: siehe Pfeile auf dem Band" : "");
       const list = [];
@@ -864,6 +946,17 @@
         ctx.stroke();
         ctx.restore();
         if (l.id === "belts") drawArrows({ items: [line] }, sx, sy, Infinity, Infinity);
+        if (l.id === "wires") {
+          [[line[0], line[1]], [line[line.length - 2], line[line.length - 1]]].forEach(([x, y]) => {
+            ctx.beginPath();
+            ctx.arc(sx(x), sy(y), 5, 0, Math.PI * 2);
+            ctx.fillStyle = l.color;
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#ffffff";
+            ctx.stroke();
+          });
+        }
       } else if (type === "node") {
         const r = markerRadius(size().w, size().h) * 1.25;
         ctx.beginPath();
@@ -1168,6 +1261,23 @@
       hint.textContent = "Oben ein Werkzeug wählen und auf der Karte zeichnen. Alle sehen die Zeichnungen.";
       plan.append(hint);
       panel.append(plan);
+
+      if (BASES.length > 1) {
+        const pickBase = section("Karte", []);
+        const chips = document.createElement("div");
+        chips.className = "s-map-chips";
+        const buttons = BASES.map(([id, text]) => chip(text, "", id === base, () => {
+          base = id;
+          saved.base = id;
+          keep();
+          buttons.forEach((x) => { x.classList.toggle("is-off", x.dataset.base !== id); x.setAttribute("aria-pressed", String(x.dataset.base === id)); });
+          return true;
+        }));
+        buttons.forEach((x, k) => { x.dataset.base = BASES[k][0]; });
+        chips.append(...buttons);
+        pickBase.append(chips);
+        panel.append(pickBase);
+      }
 
       const names = [...groups.keys()].sort((a, c) => {
         const ia = GROUP_ORDER.indexOf(a), ic = GROUP_ORDER.indexOf(c);

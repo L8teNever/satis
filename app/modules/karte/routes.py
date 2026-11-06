@@ -68,7 +68,7 @@ def _read_save(folder, sav, by, filename=""):
 
 @bp.get("/")
 def index():
-    return render_template("karte/index.html")
+    return render_template("karte/index.html", tiles=tile_levels())
 
 
 @bp.post("/upload")
@@ -103,6 +103,36 @@ def world():
 
 
 MAP_URL = "https://raw.githubusercontent.com/Fade97/satisfactory-logistics-map/main/frontend/public/map.jpg"
+
+
+# Schärfere Karten als Kacheln (256 px, z/x/y.jpg, gleicher Bereich wie BOUNDS): game = Spielkarte,
+# ground = Gelände mit Biomen, relief = Höhen. Sie gehören Coffee Stain und liegen im Datenordner unter
+# karte/tiles/<karte>/ (Quelle: Tunefish92/SatisfactoryMapRenderer, Ordner app/basemaps/tiles, „background“ = game).
+# Fehlen sie, nimmt die Karte das einzelne Bild von /bild.
+TILE_MAPS = ("game", "ground", "relief")
+
+
+def tile_levels():
+    """Höchste vorhandene Zoomstufe je Karte, z. B. {"game": 5, "ground": 7}."""
+    out = {}
+    for name in TILE_MAPS:
+        try:
+            levels = [int(d.name) for d in (_dir() / "tiles" / name).iterdir() if d.name.isdigit()]
+        except OSError:
+            continue
+        if levels:
+            out[name] = max(levels)
+    return out
+
+
+@bp.get("/kacheln/<name>/<int:z>/<int:x>/<int:y>.jpg")
+def tile(name, z, x, y):
+    if name not in TILE_MAPS or not 0 <= z <= 12 or not 0 <= x < 2 ** z or not 0 <= y < 2 ** z:
+        abort(404)
+    path = _dir() / "tiles" / name / str(z) / str(x) / f"{y}.jpg"
+    if not path.is_file():
+        abort(404)
+    return send_file(path, mimetype="image/jpeg", max_age=7 * 86400)
 
 
 @bp.get("/bild")

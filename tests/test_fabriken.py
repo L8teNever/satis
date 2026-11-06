@@ -341,3 +341,24 @@ def test_belt_pipe_player_and_node_details():
     assert all((ICONS / "item" / f"{c}.png").exists() for c in world["items"])
     kinds = {l["id"]: l["node"] for l in world["layers"] if l["kind"] == "node"}
     assert kinds["node:Iron Ore"] == "ore" and kinds.get("node:Crude Oil") == "oil" and kinds.get("node:Water") == "well"
+
+
+def test_map_tiles_and_wire_ends(client, tmp_path):
+    page = client.get("/karte/", headers=ADMIN).text
+    assert 'data-tiles="{}"' in page  # ohne Kacheln: nur das einzelne Bild
+    tile = tmp_path / "karte" / "tiles" / "ground" / "3" / "2"
+    tile.mkdir(parents=True)
+    (tile / "1.jpg").write_bytes(b"\xff\xd8\xff\xe0kachel")
+    assert "&#34;ground&#34;: 3" in client.get("/karte/", headers=ADMIN).text
+    r = client.get("/karte/kacheln/ground/3/2/1.jpg", headers=ADMIN)
+    assert r.status_code == 200 and r.data.endswith(b"kachel") and "max-age" in r.headers["Cache-Control"]
+    for bad in ("ground/3/2/2", "ground/3/8/1", "nix/3/2/1", "ground/13/0/0"):
+        assert client.get(f"/karte/kacheln/{bad}.jpg", headers=ADMIN).status_code == 404
+
+    raw = json.loads(json.dumps(RAW))
+    raw["wires"] = [[0, 0, 0, 100, 100, 0, "Build_PowerPoleMk1_C", "Build_ConstructorMk1_C", 1414], [0, 0, 0, 1, 1, 1]]
+    layers = {l["id"]: l for l in build(raw, "Simon")["layers"]}
+    wire = layers["wires"]["details"]["0"]
+    assert wire["len"] == 14.1 and wire["ends"][1] == [DATA["classes"]["Build_ConstructorMk1_C"][0], "Desc_ConstructorMk1_C"]
+    assert "1" not in layers["wires"]["details"] and layers["wires"]["on"] is True
+    assert (ICONS / "building" / "Desc_PowerPoleMk1_C.png").exists()
