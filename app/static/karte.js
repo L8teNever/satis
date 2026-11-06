@@ -206,9 +206,35 @@
       ctx.stroke();
     }
 
+    /* Flächen wie auf den bekannten Satisfactory-Karten: dunkle Füllung, Rand in der Farbe der Ebene.
+       Strommasten sind kleine blaue Rauten in fester Größe, damit man die Kabel-Knoten sieht. */
+    const WIRE_COLOR = "#c9d1da";  // auch für ältere Welten, in denen die Kabel noch gelb gespeichert sind
+    const LINE_WIDTH = { belts: 130, pipes: 160, hyper: 220, rails: 300, roads: 500 };  // echte Breite in cm
+    function drawPoles(l, sx, sy, w, h) {
+      const it = l.items;
+      const r = Math.max(3.5, Math.min(7, view.s * 120));
+      ctx.beginPath();
+      for (let i = 0; i < it.length; i += 6) {
+        const x = sx(it[i]), y = sy(it[i + 1]);
+        if (x < -10 || y < -10 || x > w + 10 || y > h + 10) continue;
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r, y);
+        ctx.closePath();
+      }
+      ctx.fillStyle = "rgba(10, 20, 60, .55)";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#2f5cff";
+      ctx.stroke();
+    }
+
     function drawRects(l, sx, sy, w, h) {
+      if (l.id === "power_poles") { drawPoles(l, sx, sy, w, h); return; }
       const it = l.items;
       const s = view.s;
+      let big = false;
       ctx.fillStyle = l.color;
       ctx.beginPath();
       for (let i = 0; i < it.length; i += 6) {
@@ -216,6 +242,7 @@
         const r = Math.max(it[i + 3], it[i + 4]) * s;
         if (x < -r || y < -r || x > w + r || y > h + r) continue;
         if (r < 3) { ctx.rect(x - 1, y - 1, 2, 2); continue; }
+        if (r >= 10) big = true;
         const a = it[i + 2] * Math.PI / 180;
         const cx = Math.cos(a) * s / 2, cy = Math.sin(a) * s / 2;
         const lx = it[i + 3], ly = it[i + 4];
@@ -225,7 +252,19 @@
         ctx.lineTo(x - cx * lx - cy * ly, y - cy * lx + cx * ly);
         ctx.closePath();
       }
+      if (!big) { ctx.fill(); return; }
+      // Nah dran: dunkle Füllung mit Farbe der Ebene drüber und kräftigem Rand
+      ctx.fillStyle = "#34495e";
       ctx.fill();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = l.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = l.color;
+      ctx.stroke();
+      ctx.lineJoin = "miter";
     }
 
     function outline(it, i, sx, sy) {
@@ -245,28 +284,34 @@
 
     function drawLines(l, sx, sy) {
       if (l.id === "wires") {
-        const lw = Math.min(2.5, Math.max(1, view.s * 60));
         ctx.beginPath();
         for (const line of l.items) {
           ctx.moveTo(sx(line[0]), sy(line[1]));
           for (let i = 2; i < line.length; i += 2) ctx.lineTo(sx(line[i]), sy(line[i + 1]));
         }
-        ctx.strokeStyle = "rgba(0, 0, 0, .55)";
-        ctx.lineWidth = lw + 1.5;
-        ctx.stroke();
-        ctx.strokeStyle = l.color;
-        ctx.lineWidth = lw;
+        ctx.strokeStyle = WIRE_COLOR;
+        ctx.lineWidth = lineWidth(l);
         ctx.stroke();
         return;
       }
       ctx.strokeStyle = l.color;
-      ctx.lineWidth = Math.min(4, Math.max(1, view.s * 150));
+      // Rausgezoomt dünne Striche, nah dran so breit wie im Spiel
+      ctx.lineWidth = lineWidth(l);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.beginPath();
       for (const line of l.items) {
         ctx.moveTo(sx(line[0]), sy(line[1]));
         for (let i = 2; i < line.length; i += 2) ctx.lineTo(sx(line[i]), sy(line[i + 1]));
       }
       ctx.stroke();
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "miter";
+    }
+
+    function lineWidth(l) {
+      if (l.id === "wires") return Math.min(2, Math.max(1, view.s * 25));
+      return Math.min(40, Math.max(view.s * (LINE_WIDTH[l.id] || 150), Math.min(4, Math.max(1, view.s * 150))));
     }
 
     const visibleNode = (it, i) => filter.purity.has(it[i + 3]) && !(filter.free && it[i + 4]);
@@ -313,7 +358,7 @@
     function drawArrows(l, sx, sy, w, h) {
       if (view.s < 0.012) return;
       const gap = 46;  // Abstand der Pfeile in Pixeln
-      const size = Math.min(5, Math.max(3, view.s * 120));
+      const size = Math.min(12, Math.max(3, lineWidth(l) * 0.45, view.s * 120 > 5 ? 5 : view.s * 120));
       ctx.fillStyle = "rgba(20, 16, 8, .85)";
       ctx.beginPath();
       for (const line of l.items) {
@@ -939,18 +984,18 @@
         ctx.moveTo(sx(line[0]), sy(line[1]));
         for (let k = 2; k < line.length; k += 2) ctx.lineTo(sx(line[k]), sy(line[k + 1]));
         ctx.strokeStyle = "rgba(255, 255, 255, .9)";
-        ctx.lineWidth = Math.min(4, Math.max(1, view.s * 150)) + 5;
+        ctx.lineWidth = lineWidth(l) + 5;
         ctx.stroke();
-        ctx.strokeStyle = l.color;
+        ctx.strokeStyle = l.id === "wires" ? WIRE_COLOR : l.color;
         ctx.lineWidth -= 4;
         ctx.stroke();
         ctx.restore();
-        if (l.id === "belts") drawArrows({ items: [line] }, sx, sy, Infinity, Infinity);
+        if (l.id === "belts") drawArrows({ id: "belts", items: [line] }, sx, sy, Infinity, Infinity);
         if (l.id === "wires") {
           [[line[0], line[1]], [line[line.length - 2], line[line.length - 1]]].forEach(([x, y]) => {
             ctx.beginPath();
             ctx.arc(sx(x), sy(y), 5, 0, Math.PI * 2);
-            ctx.fillStyle = l.color;
+            ctx.fillStyle = "#2f5cff";
             ctx.fill();
             ctx.lineWidth = 2;
             ctx.strokeStyle = "#ffffff";
