@@ -4,6 +4,23 @@
 @font-face { font-family: Lato; font-weight: 400; font-style: italic; font-display: swap; src: url(vendor/fonts/lato-latin-400-italic.woff2) format("woff2"); }
 @font-face { font-family: Lato; font-weight: 700; font-display: swap; src: url(vendor/fonts/lato-latin-700-normal.woff2) format("woff2"); }
 
+/* Scrollbars überall gleich: schmal, dunkel, ohne Pfeile. Chrome/Edge/Safari über ::-webkit-scrollbar,
+   Firefox kennt nur scrollbar-width/-color (in Chrome würden die die eigenen Styles abschalten). */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: #4a5560; background-clip: padding-box; border: 2px solid transparent; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background-color: #f39c12; }
+::-webkit-scrollbar-thumb:active { background-color: #e08e0b; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-corner { background: transparent; }
+html::-webkit-scrollbar-track { background-color: #1c1c1c; }
+.s-map-layers::-webkit-scrollbar { width: 6px; }
+.s-map-layers::-webkit-scrollbar-thumb { border-width: 1px; }
+@supports (-moz-appearance: none) {
+  * { scrollbar-width: thin; scrollbar-color: #4a5560 transparent; }
+  html { scrollbar-color: #4a5560 #1c1c1c; }
+}
+
 main > .container-fluid { max-width: 120rem; }
 .navbar-brand { font-weight: 700; letter-spacing: .08em; }
 .navbar-collapse { max-height: calc(100vh - 3.5rem); overflow-y: auto; }
