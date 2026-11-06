@@ -309,8 +309,9 @@ def test_machine_details_for_hover():
     world = build(raw, "Simon")
     layers = {l["id"]: l for l in world["layers"]}
     smelter = next(v for v in layers["factories"]["details"].values() if v.get("clock"))
-    assert smelter == {"eff": 87, "clock": 150, "recipe": RECIPES["Recipe_IngotIron_C"]["name"],
-                       "inv": [["in", [["Desc_OreIron_C", 50]]], ["out", [["Desc_IronIngot_C", 7]]]]}
+    assert {k: smelter[k] for k in ("eff", "clock", "recipe", "inv")} == {
+        "eff": 87, "clock": 150, "recipe": RECIPES["Recipe_IngotIron_C"]["name"],
+        "inv": [["in", [["Desc_OreIron_C", 50]]], ["out", [["Desc_IronIngot_C", 7]]]]}
     assert len(layers["factories"]["details"]) == 1  # der leere Constructor bekommt keinen Eintrag
     assert layers["miners"]["details"]["0"]["inv"] == [["out", [["Desc_Water_C", 48.5]]]]  # Liter -> m³
     assert world["items"]["Desc_Water_C"] == ["Water", True] and world["items"]["Desc_OreIron_C"][1] is False
@@ -362,3 +363,15 @@ def test_map_tiles_and_wire_ends(client, tmp_path):
     assert wire["len"] == 14.1 and wire["ends"][1] == [DATA["classes"]["Build_ConstructorMk1_C"][0], "Desc_ConstructorMk1_C"]
     assert "1" not in layers["wires"]["details"] and layers["wires"]["on"] is True
     assert (ICONS / "building" / "Desc_PowerPoleMk1_C.png").exists()
+
+
+def test_machine_rates_and_mined_node():
+    raw = json.loads(json.dumps(RAW))
+    node = next(k for k, v in DATA["nodes"].items() if v[0] == "Desc_OreIron_C" and v[1] == 2)
+    raw["things"]["Build_SmelterMk1_C"] = [[0, 0, 0, 0, "Recipe_IngotIron_C", {"clock": 150}]]
+    raw["things"]["Build_MinerMk2_C"] = [[5, 5, 0, 0, "", {"node": node, "eff": 100}]]
+    layers = {l["id"]: l for l in build(raw, "Simon")["layers"]}
+    smelter = next(v for v in layers["factories"]["details"].values() if v.get("clock") == 150)
+    assert smelter["rates"] == {"in": [["Desc_OreIron_C", 30.0]], "out": [["Desc_IronIngot_C", 30.0]]}
+    assert smelter["power"] == RECIPES["Recipe_IngotIron_C"]["power"]
+    assert layers["miners"]["details"]["0"]["mines"] == ["Desc_OreIron_C", 2]

@@ -113,6 +113,8 @@ function details(obj) {
   const progress = value(obj, 'mCurrentManufacturingProgress');
   if (typeof progress === 'number' && round(progress * 100) > 0) info.prog = round(progress * 100);
   if (value(obj, 'mIsProductionPaused')) info.paused = true;
+  const node = value(obj, 'mExtractableResource')?.pathName;
+  if (node) info.node = tail(node);  // Miner/Pumpe: auf welchem Vorkommen
   return Object.keys(info).length ? info : null;
 }
 

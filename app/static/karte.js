@@ -737,7 +737,8 @@
           if (d <= radius * 1.1 && d < dist) { dist = d; best = { type: "node", l, i }; }
         }
       }
-      if (best) return best;
+      const node = best;
+      best = null;
       const pad = 3 / view.s;
       let area = Infinity;
       for (const l of world.layers) {
@@ -756,7 +757,9 @@
           }
         }
       }
-      if (best) return best;
+      // Ein Miner steht auf seinem Vorkommen: dann zeigt der Hover den Miner, sonst das Vorkommen
+      if (best && (!node || best.l.id === "miners")) return best;
+      if (node) return node;
       for (const l of world.layers) {
         if (l.kind !== "line" || !l.details || !shown(l)) continue;
         const reach = (l.id === "wires" ? 5 : 6) / view.s;
@@ -835,18 +838,42 @@
       tip.append(g);
     }
 
+    const RUNS = new Set(["factories", "miners", "generators"]);  // Maschinen mit Takt
+    const MINER_RATE = [[/Miner Mk\.?1|MinerMk1/i, 60], [/Miner Mk\.?2|MinerMk2/i, 120], [/Miner Mk\.?3|MinerMk3/i, 240],
+      [/Oil (Extractor|Pump)|OilPump/i, 120], [/Water Extractor|WaterPump/i, 120]];  // pro Minute auf normalem Vorkommen
+
     function fillRect(h, d) {
       const { l, i } = h;
       const label = world.labels[l.items[i + 5]] || l.label;
-      const [name, recipe] = label.includes(": ") ? label.split(/: (.*)/s) : [label, (d && d.recipe) || ""];
+      const [name, recipeFromLabel] = label.includes(": ") ? label.split(/: (.*)/s) : [label, ""];
       d = d || {};
-      header(ICON_BASE + iconName(l), name, recipe);
+      const recipe = d.recipe || recipeFromLabel;
+      const clock = d.clock !== undefined ? d.clock : 100;  // 100 % stehen nicht im Spielstand
+      const shards = {}, slots = (d.inv || []).find(([part]) => part === "boost");
+      if (slots) slots[1].forEach(([cls, n]) => { shards[cls] = n; });
+
+      let sub = recipe;
+      if (!recipe && l.id === "factories") sub = "Kein Rezept eingestellt";
+      if (d.mines) sub = `baut ab: ${itemName(d.mines[0])[0]} (${PURITY_NAME[d.mines[1]] || "?"})`;
+      header(ICON_BASE + iconName(l), name, sub);
+      if (!recipe && l.id === "factories") tip.querySelector(".s-map-tip-sub").style.color = "#e8564a";
+
       const list = [];
       if (d.paused) list.push(["Pausiert", "#f2b33d"]);
-      if (d.eff !== undefined) list.push([`Auslastung ${d.eff} %`, effColor(d.eff)]);
-      if (d.clock !== undefined) list.push([`Takt ${d.clock.toLocaleString("de-DE")} %`, "#2fb8ff"]);
-      if (d.boost !== undefined) list.push([`Boost ×${d.boost.toLocaleString("de-DE")}`, "#d040d0"]);
+      if (RUNS.has(l.id)) {
+        const c = clock > 100.05 ? "#d070ff" : clock < 99.95 ? "#2fb8ff" : "#aaaaaa";
+        const word = clock > 100.05 ? " übertaktet" : clock < 99.95 ? " gedrosselt" : "";
+        list.push([`Takt ${clock.toLocaleString("de-DE")} %${word}`, c]);
+      }
+      if (shards.Desc_CrystalShard_C) list.push([`${shards.Desc_CrystalShard_C} × Power Shard`, "#d070ff"]);
+      if (shards.Desc_WAT1_C) list.push([`${shards.Desc_WAT1_C} × Somersloop`, "#d040d0"]);
+      if (d.boost !== undefined) list.push([`Ausgabe ×${d.boost.toLocaleString("de-DE")}`, "#d040d0"]);
+      if (d.eff !== undefined) list.push([d.eff === 0 && !d.paused ? "Steht still" : `Auslastung ${d.eff} %`, effColor(d.eff)]);
       if (d.prog !== undefined) list.push([`Fortschritt ${d.prog} %`, "#aaaaaa"]);
+      if (d.power) {
+        const mw = d.power * (clock / 100) ** 1.321928 * (d.boost ? d.boost ** 2 : 1);
+        list.push([`≈ ${mw.toLocaleString("de-DE", { maximumFractionDigits: 1 })} MW`, "#f2c94c"]);
+      }
       facts(list);
       if (d.eff !== undefined) {
         const bar = el("div", "s-map-tip-bar");
@@ -856,8 +883,30 @@
         bar.append(fill);
         tip.append(bar);
       }
-      (d.inv || []).forEach(([part, rows]) => itemRows(PARTS[part] || part, rows));
-      if (!d.inv) tip.append(el("div", "s-map-tip-empty", "Inventar leer"));
+
+      // Soll pro Minute beim eingestellten Takt (Somersloop verdoppelt nur die Ausgabe)
+      const scale = clock / 100;
+      const perMin = [];
+      if (d.rates) {
+        d.rates.in.forEach(([cls, n]) => perMin.push([cls, -n * scale]));
+        d.rates.out.forEach(([cls, n]) => perMin.push([cls, n * scale * (d.boost || 1)]));
+      } else if (d.mines) {
+        const base = (MINER_RATE.find(([re]) => re.test(name)) || [null, 0])[1];
+        if (base) perMin.push([d.mines[0], base * d.mines[1] * scale]);
+      }
+      if (perMin.length) {
+        tip.append(el("div", "s-map-tip-part", `Pro Minute bei ${clock.toLocaleString("de-DE")} %`));
+        perMin.forEach(([cls, n]) => {
+          const [itemLabel, liquid] = itemName(cls);
+          const r = el("div", "s-map-tip-row");
+          const v = el("span", "s-map-tip-n", `${n > 0 ? "+" : "−"}${amount(Math.round(Math.abs(n) * 100) / 100, liquid)}`);
+          v.style.color = n > 0 ? "#5fd068" : "#e8564a";
+          r.append(iconImg(`${ICON_BASE}item/${cls}.png`), el("span", "", itemLabel), v);
+          tip.append(r);
+        });
+      }
+      (d.inv || []).filter(([part]) => part !== "boost").forEach(([part, rows]) => itemRows(PARTS[part] || part, rows));
+      if (!(d.inv || []).some(([part]) => part !== "boost")) tip.append(el("div", "s-map-tip-empty", "Inventar leer"));
     }
 
     function fillWire(d) {

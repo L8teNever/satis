@@ -254,7 +254,17 @@ def _details(info, recipe, seen):
     Flüssigkeiten stehen im Spielstand in Litern, angezeigt werden m³."""
     out = {k: info[k] for k in ("eff", "clock", "boost", "prog", "paused") if k in info}
     if recipe in RECIPES:
-        out["recipe"] = RECIPES[recipe]["name"]
+        r = RECIPES[recipe]
+        out["recipe"] = r["name"]
+        # Mengen pro Minute bei 100 % Takt (der Hover rechnet Takt und Somersloop drauf), Strom in MW
+        per_min = 60 / r["time"]
+        out["rates"] = {part: [[item, round(n * per_min, 3)] for item, n in r[part]] for part in ("in", "out")}
+        out["power"] = r.get("power", 0)
+        seen.update(item for part in ("in", "out") for item, _n in r[part])
+    if info.get("node") in DATA["nodes"]:
+        item, purity = DATA["nodes"][info["node"]][:2]
+        out["mines"] = [item, purity]
+        seen.add(item)
     inv = info.get("inv") or {}
     parts = []
     for part in INVENTORY_PARTS:
