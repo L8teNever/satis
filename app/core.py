@@ -75,6 +75,12 @@ CREATE TABLE IF NOT EXISTS sync_tokens (
     token_hash TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS sync_seen (
+    user_id  INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    seen_at  REAL NOT NULL,
+    interval REAL NOT NULL DEFAULT 30,
+    host     TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -182,6 +188,44 @@ def user_from_token(token: str):
     return get_db().execute(
         "SELECT u.* FROM sync_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?",
         (_token_hash(token.strip()),)).fetchone()
+
+
+# Lebenszeichen des Sync-Skripts: Jeder Abruf mit Schlüssel zählt. Das Skript fragt alle „interval“ Sekunden,
+# bleibt es länger als zwei Runden plus eine Minute weg, gilt es als offline.
+def sync_grace(interval: float) -> float:
+    return interval * 2 + 60
+
+
+def sync_seen(user_id: int, interval: str = "", host: str = ""):
+    """Gibt True zurück, wenn das Skript gerade wieder online gekommen ist (dann sollen die Seiten nachladen)."""
+    import time
+    try:
+        every = min(3600.0, max(5.0, float(interval)))
+    except (TypeError, ValueError):
+        every = 30.0  # ältere Skripte schicken ihr Intervall nicht mit
+    now = time.time()
+    db = get_db()
+    row = db.execute("SELECT seen_at, interval FROM sync_seen WHERE user_id = ?", (user_id,)).fetchone()
+    db.execute("INSERT INTO sync_seen (user_id, seen_at, interval, host) VALUES (?, ?, ?, ?) "
+               "ON CONFLICT(user_id) DO UPDATE SET seen_at = excluded.seen_at, interval = excluded.interval, "
+               "host = excluded.host", (user_id, now, every, (host or "")[:60]))
+    db.commit()
+    return not row or now - row["seen_at"] > sync_grace(row["interval"])
+
+
+def sync_status():
+    """Alle mit Sync-Schlüssel: wer ist mit seinem Skript gerade verbunden?"""
+    import time
+    now = time.time()
+    rows = get_db().execute(
+        "SELECT u.id, u.name, s.seen_at, s.interval, s.host FROM sync_tokens t JOIN users u ON u.id = t.user_id "
+        "LEFT JOIN sync_seen s ON s.user_id = u.id ORDER BY u.name COLLATE NOCASE").fetchall()
+    out = []
+    for r in rows:
+        until = r["seen_at"] + sync_grace(r["interval"]) if r["seen_at"] else 0
+        out.append({"id": r["id"], "name": r["name"], "online": until > now, "seen_at": r["seen_at"],
+                    "ago": int(now - r["seen_at"]) if r["seen_at"] else None, "until": until, "host": r["host"] or ""})
+    return out
 
 
 def admin_required(view):

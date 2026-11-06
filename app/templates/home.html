@@ -1,7 +1,38 @@
 {% extends "base.html" %}
 {% block title %}Übersicht{% endblock %}
 {% block content %}
+{% macro ago(sec) -%}
+  {%- if sec < 90 %}vor {{ sec }} Sek.{% elif sec < 5400 %}vor {{ (sec / 60)|round|int }} Min.
+  {%- elif sec < 172800 %}vor {{ (sec / 3600)|round|int }} Std.{% else %}vor {{ (sec / 86400)|round|int }} Tagen{% endif -%}
+{%- endmacro %}
 <div class="row">
+  {# Sync-Skript: läuft es gerade bei jemandem? Grün = verbunden. satis.js schaltet auf offline, wenn die Zeit um ist. #}
+  {% set any_online = syncs|selectattr("online")|list %}
+  <div class="col-sm-6 col-lg-4 col-xl-3 mb-3">
+    <a class="card tile h-100 s-sync-tile" href="{{ url_for('blueprints.sync') }}">
+      <div class="card-body">
+        <div class="text-center">
+          <i class="fas fa-plug fa-3x mb-3 {{ 'text-success' if any_online else 'text-danger' if syncs else 'text-muted' }}" data-sync-icon></i>
+          <h5 class="card-title">Sync-Skript</h5>
+        </div>
+        {% if syncs %}
+        <ul class="list-unstyled mb-0 s-sync-list">
+          {% for s in syncs %}
+          <li class="s-sync {{ 'is-online' if s.online else 'is-offline' }}"{% if s.online %} data-offline-at="{{ s.until|int }}"{% endif %}>
+            <span class="s-sync-dot"></span>
+            <span class="s-sync-name">{{ s.name }}{% if s.host %} <span class="text-muted small">· {{ s.host }}</span>{% endif %}</span>
+            <span class="s-sync-state small">
+              {%- if s.online %}online{% elif s.ago is not none %}offline · {{ ago(s.ago) }}{% else %}noch nie verbunden{% endif -%}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="card-text text-muted text-center">Noch kein Sync-Skript eingerichtet.</p>
+        {% endif %}
+      </div>
+    </a>
+  </div>
   {% for m in cards %}
   <div class="col-sm-6 col-lg-4 col-xl-3 mb-3">
     <a class="card tile h-100 text-center" href="{{ url_for(m.endpoint) }}">

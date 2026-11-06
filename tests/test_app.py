@@ -118,3 +118,29 @@ def test_pages_are_built_for_switching_without_reload(client):
             assert f'data-part="{name}"' in html, (page, name)
         assert 'name="satis-assets" content="' in html
         assert "this.form.submit()" not in html  # das würde am Seitenwechsel vorbei neu laden
+
+
+def test_sync_script_status_on_home(client, monkeypatch):
+    import time as clock
+
+    from app import core
+    home = client.get("/", headers=ADMIN).text
+    assert "Sync-Skript" in home and "Noch kein Sync-Skript eingerichtet" in home
+    page = client.get("/blueprints/sync", headers=ADMIN).text
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    sync = client.post("/blueprints/token", data={"csrf_token": csrf}, headers=ADMIN).text
+    token = re.search(r"satis_[\w-]{40,}", sync).group(0)
+    assert "noch nie verbunden" in client.get("/", headers=ADMIN).text
+    rev = client.get("/live", headers=ADMIN).json["rev"]
+    headers = {"X-Satis-Token": token, "X-Satis-Interval": "30", "X-Satis-Host": "SIMON-PC"}
+    assert client.get("/blueprints/api/list", headers=headers).status_code == 200
+    assert client.get("/live", headers=ADMIN).json["rev"] > rev  # wieder online: Seiten laden nach
+    rev = client.get("/live", headers=ADMIN).json["rev"]
+    client.get("/blueprints/api/list", headers=headers)
+    assert client.get("/live", headers=ADMIN).json["rev"] == rev  # weiter online: keine Unruhe
+    home = client.get("/", headers=ADMIN).text
+    assert "is-online" in home and "SIMON-PC" in home and "data-offline-at" in home
+    later = clock.time() + core.sync_grace(30) + 5
+    monkeypatch.setattr(clock, "time", lambda: later)
+    home = client.get("/", headers=ADMIN).text
+    assert "is-offline" in home and "offline · vor 2 Min." in home

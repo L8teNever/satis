@@ -4,7 +4,9 @@ Das Einlesen läuft im Hintergrund, große Spielstände brauchen länger als ein
 Die Welt und der Status liegen als Dateien im Datenordner, damit alle Gunicorn-Worker denselben Stand sehen.
 """
 import json
+import math
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -13,7 +15,7 @@ from pathlib import Path
 
 from flask import abort, g, jsonify, render_template, request, send_file
 
-from ...core import bump_live, data_dir
+from ...core import bump_live, data_dir, get_db
 from . import bp
 from .layers import build
 
@@ -114,3 +116,57 @@ def image():
         except Exception:
             abort(404)
     return send_file(path, mimetype="image/jpeg", max_age=86400)
+
+
+# --------------------------------------------------------------------------- Zeichnungen
+# Alle sehen und löschen alle Zeichnungen, die Karte ist ein gemeinsamer Planungstisch.
+KINDS = {"pen": (4, 4000), "line": (4, 4), "rect": (4, 4), "pin": (2, 2)}  # Anzahl Zahlen in points: min, max
+COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _mark(row):
+    return {"id": row["id"], "kind": row["kind"], "color": row["color"], "width": row["width"],
+            "points": json.loads(row["points"]), "text": row["text"], "by": row["name"], "byId": row["user_id"],
+            "at": row["created_at"]}
+
+
+@bp.get("/zeichnungen")
+def marks():
+    rows = get_db().execute("SELECT m.*, u.name FROM karte_marks m JOIN users u ON u.id = m.user_id ORDER BY m.id").fetchall()
+    response = jsonify(marks=[_mark(r) for r in rows], me=g.user["id"])
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@bp.post("/zeichnungen")
+def add_mark():
+    data = request.get_json(silent=True) or {}
+    kind, color, points = data.get("kind"), str(data.get("color", "")), data.get("points")
+    if kind not in KINDS or not COLOR.match(color) or not isinstance(points, list):
+        return jsonify(error="Zeichnung unvollständig."), 400
+    low, high = KINDS[kind]
+    if not low <= len(points) <= high or len(points) % 2:
+        return jsonify(error="Zeichnung unvollständig."), 400
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and abs(v) < 1e7 for v in points):
+        return jsonify(error="Zeichnung unvollständig."), 400
+    try:
+        width = min(20.0, max(1.0, float(data.get("width", 3))))
+    except (TypeError, ValueError):
+        width = 3.0
+    text = str(data.get("text", ""))[:120].strip()
+    db = get_db()
+    cur = db.execute("INSERT INTO karte_marks (user_id, kind, color, width, points, text) VALUES (?, ?, ?, ?, ?, ?)",
+                     (g.user["id"], kind, color.lower(), width, json.dumps([round(v, 1) for v in points]), text))
+    db.commit()
+    row = db.execute("SELECT m.*, u.name FROM karte_marks m JOIN users u ON u.id = m.user_id WHERE m.id = ?",
+                     (cur.lastrowid,)).fetchone()
+    return jsonify(_mark(row)), 201
+
+
+@bp.delete("/zeichnungen/<int:mark_id>")
+def delete_mark(mark_id):
+    db = get_db()
+    if not db.execute("DELETE FROM karte_marks WHERE id = ?", (mark_id,)).rowcount:
+        abort(404)
+    db.commit()
+    return jsonify(ok=True)

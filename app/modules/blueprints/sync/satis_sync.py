@@ -15,6 +15,7 @@ import configparser
 import hashlib
 import json
 import os
+import platform
 import sys
 import tempfile
 import time
@@ -94,7 +95,10 @@ def save_state(state):
 class Server:
     def __init__(self, s):
         self.base = s["url"].rstrip("/")
-        self.headers = {"X-Satis-Token": s["token"], "User-Agent": "satis-sync/1"}
+        # Intervall und PC-Name: Damit zeigt die Startseite, ob das Skript gerade läuft
+        host = platform.node().encode("ascii", "ignore").decode()[:60]
+        self.headers = {"X-Satis-Token": s["token"], "User-Agent": "satis-sync/1",
+                        "X-Satis-Interval": str(s.get("interval", "30")), "X-Satis-Host": host}
         if s.get("cf_client_id"):
             self.headers["CF-Access-Client-Id"] = s["cf_client_id"]
             self.headers["CF-Access-Client-Secret"] = s.get("cf_client_secret", "")

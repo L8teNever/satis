@@ -162,7 +162,7 @@ def build(raw, by="", filename=""):
         counts["players"] += 1
 
     layers = [{"id": i, "label": name, "group": group, "color": color, "kind": kind, "on": on,
-               "count": counts[i], "items": items[i]}
+               "count": counts[i], "items": items[i], "icon": _icon(i)}
               for i, name, group, color, kind, on, _size_ in LAYERS if counts[i]]
     return {
         "meta": {**raw["meta"], "by": by, "filename": filename or raw.get("meta", {}).get("filename", "")},
@@ -178,6 +178,21 @@ NODE_COLORS = {
     "Desc_OreBauxite_C": "#d05050", "Desc_RawQuartz_C": "#f090c0", "Desc_OreUranium_C": "#60e060", "Desc_SAM_C": "#9040ff",
     "Desc_NitrogenGas_C": "#a0d0ff", "Desc_Water_C": "#4080ff", "Desc_Geyser_C": "#ff8040",
 }
+
+# Icons aus dem Spiel (static/icons, aus greeny/SatisfactoryTools, MIT). Gebäude-Ebenen heißen wie ihre Datei.
+NODE_ICONS = {
+    "Desc_OreIron_C": "iron", "Desc_OreCopper_C": "copper", "Desc_Stone_C": "stone", "Desc_Coal_C": "coal",
+    "Desc_OreGold_C": "gold", "Desc_LiquidOil_C": "oil", "Desc_LiquidOilWell_C": "oil", "Desc_Sulfur_C": "sulfur",
+    "Desc_OreBauxite_C": "bauxite", "Desc_RawQuartz_C": "quartz", "Desc_OreUranium_C": "uranium", "Desc_SAM_C": "sam",
+    "Desc_NitrogenGas_C": "nitrogen", "Desc_Water_C": "water", "Desc_Geyser_C": "geyser",
+}
+WORLD_ICONS = {"drop_closed": "harddrive", "drop_open": "harddrive", "somersloops": "somersloop", "mercer": "mercer"}
+
+
+def _icon(layer):
+    if layer in WORLD_ICONS:
+        return f"items/{WORLD_ICONS[layer]}.png"
+    return "" if layer == "players" else f"buildings/{layer}.png"
 
 
 def _node_info(node):
@@ -199,5 +214,6 @@ def _node_layers(nodes, label):
         row["items"] += [n["x"], n["y"], label(text), purity or 1, int(n["used"])]
         row["count"] += 1
     return [{"id": "node:" + name, "label": name, "group": "Vorkommen", "color": NODE_COLORS.get(row["item"], "#ffffff"),
-             "kind": "node", "on": True, "count": row["count"], "items": row["items"]}
+             "kind": "node", "on": True, "count": row["count"], "items": row["items"],
+             "icon": f"items/{NODE_ICONS[row['item']]}.png" if row["item"] in NODE_ICONS else ""}
             for name, row in sorted(found.items())]

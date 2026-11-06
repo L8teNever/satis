@@ -1,9 +1,34 @@
 /* Karte der Spielwelt (eigene Seite). Gezeichnet wird auf einem Canvas und nur, wenn sich etwas ändert.
-   Neue Ebenen kommen aus layers.py, hier muss dafür nichts geändert werden. */
+   Neue Ebenen kommen aus layers.py, hier muss dafür nichts geändert werden.
+   Dazu kommen die Zeichnungen (Planung): Sie liegen in Spielkoordinaten auf dem Server und alle sehen sie. */
 (function () {
   /* Geladene Welt bleibt beim Seitenwechsel im Speicher, solange der Stand gleich ist */
   const cache = { at: null, world: null };
   let current = null;  // Karte auf der aktuellen Seite
+
+  const ICON_BASE = "/static/icons/";
+  /* Ältere world.json (vor den Icons) haben kein Feld "icon", dann hilft der Name weiter */
+  const NODE_ICONS = {
+    "Iron Ore": "iron", "Copper Ore": "copper", Limestone: "stone", Coal: "coal", "Caterium Ore": "gold",
+    "Crude Oil": "oil", Sulfur: "sulfur", Bauxite: "bauxite", "Raw Quartz": "quartz", Uranium: "uranium",
+    SAM: "sam", "Nitrogen Gas": "nitrogen", Water: "water", Geysir: "geyser",
+  };
+  const WORLD_ICONS = { drop_closed: "harddrive", drop_open: "harddrive", somersloops: "somersloop", mercer: "mercer" };
+  /* Reinheit wie auf den üblichen Satisfactory-Karten: rot unrein, gelb normal, grün rein */
+  const PURITIES = [[2, "Rein", "#5fd068"], [1, "Normal", "#f2b33d"], [0.5, "Unrein", "#e8564a"]];
+  const PURITY_COLOR = { 2: "#5fd068", 1: "#f2b33d", 0.5: "#e8564a" };
+  const PLAYER_COLORS = ["#00d2ff", "#2ecc71", "#f39c12", "#e74c3c", "#9b59b6", "#1abc9c", "#f1c40f"];
+  const DRAW_COLORS = ["#ff4d4d", "#ff9f1a", "#ffe14d", "#5fd068", "#2fb8ff", "#b36bff", "#ffffff"];
+  const DRAW_WIDTHS = [[2, "Dünn"], [4, "Mittel"], [8, "Dick"]];
+  const GROUP_ORDER = ["Planung", "Vorkommen", "Welt", "Produktion", "Strom", "Logistik", "Verkehr", "Bauwerke"];
+
+  function iconName(l) {
+    if (!l) return "";
+    if (l.icon !== undefined) return l.icon;
+    if (l.id && l.id.startsWith("node:")) return NODE_ICONS[l.label] ? `items/${NODE_ICONS[l.label]}.png` : "";
+    if (WORLD_ICONS[l.id]) return `items/${WORLD_ICONS[l.id]}.png`;
+    return l.id === "players" || l.id === "marks" ? "" : `buildings/${l.id}.png`;
+  }
 
   function init(root) {
     let alive = true;  // Nach dem Seitenwechsel laufen keine alten Abrufe mehr weiter
@@ -15,19 +40,46 @@
     const DEFAULT_BOUNDS = { x: -324698.832031, y: -375000.0, size: 750000.0 };
     const STRIDE = { rect: 6, dot: 3, node: 5, player: 4 };
     const STORE = "satis.karte.ebenen";
-    const PURITIES = [[2, "Rein"], [1, "Normal"], [0.5, "Unrein"]];
-    const PLAYER_COLORS = ["#00d2ff", "#2ecc71", "#f39c12", "#e74c3c", "#9b59b6", "#1abc9c", "#f1c40f"];
+
+    const icons = new Map();
+    function icon(l) {
+      const name = iconName(l);
+      if (!name) return null;
+      if (!icons.has(name)) {
+        const img = new Image();
+        img.onload = () => redraw();
+        img.src = ICON_BASE + name;
+        icons.set(name, img);
+      }
+      const img = icons.get(name);
+      return img.complete && img.naturalWidth > 0 ? img : null;
+    }
 
     let world = null;
     let image = null;
     let view = { x: 0, y: 0, s: 0.001 };
     let queued = false;
-    const filter = { purity: new Set([0.5, 1, 2]), free: false };
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { saved = {}; }
+    const keep = () => { try { localStorage.setItem(STORE, JSON.stringify(saved)); } catch (e) { /* voll oder gesperrt */ } };
+    const filter = {
+      purity: new Set(Array.isArray(saved.purity) ? saved.purity : [0.5, 1, 2]),
+      free: !!saved.free,
+    };
+    const closed = new Set(Array.isArray(saved.closed) ? saved.closed : []);
+
+    /* Planung */
+    let marks = [];
+    let me = null;
+    let tool = "move";
+    let color = DRAW_COLORS.includes(saved.color) ? saved.color : DRAW_COLORS[0];
+    let width = DRAW_WIDTHS.some(([v]) => v === saved.width) ? saved.width : 4;
+    let draft = null;
 
     const size = () => ({ w: canvas.clientWidth, h: canvas.clientHeight });
     const shown = (l) => (l.id in saved ? saved[l.id] : l.on);
+    const marksLayer = { id: "marks", label: "Zeichnungen", group: "Planung", color: "#ff4d4d", on: true };
+    const bounds = () => (world ? world.bounds : DEFAULT_BOUNDS);
 
     function redraw() {
       if (queued) return;
@@ -38,7 +90,7 @@
     function fit() {
       const { w, h } = size();
       if (w <= 0 || h <= 0) return;
-      const b = world ? world.bounds : DEFAULT_BOUNDS;
+      const b = bounds();
       view = { x: b.x + b.size / 2, y: b.y + b.size / 2, s: Math.min(w, h) / b.size };
       redraw();
     }
@@ -46,16 +98,57 @@
     function zoom(factor, px, py) {
       const { w, h } = size();
       if (w <= 0 || h <= 0) return;
-      const b = world ? world.bounds : DEFAULT_BOUNDS;
-      const minScale = Math.min(w, h) / b.size / 2;
+      const minScale = Math.min(w, h) / bounds().size / 2;
       const curScale = (view.s && !isNaN(view.s) && view.s > 0) ? view.s : minScale;
       const s = Math.min(0.5, Math.max(minScale, curScale * factor));
-      if (curScale > 0) {
-        view.x += (px - w / 2) / curScale - (px - w / 2) / s;
-        view.y += (py - h / 2) / curScale - (py - h / 2) / s;
-      }
+      view.x += (px - w / 2) / curScale - (px - w / 2) / s;
+      view.y += (py - h / 2) / curScale - (py - h / 2) / s;
       view.s = s;
       redraw();
+    }
+
+    function toWorld(px, py) {
+      const { w, h } = size();
+      return [(px - w / 2) / view.s + view.x, (py - h / 2) / view.s + view.y];
+    }
+
+    /* Wie groß Marker gerade sind: ganz rausgezoomt klein, damit sich die Vorkommen nicht stapeln */
+    function markerRadius(w, h) {
+      const base = Math.min(w, h) / bounds().size;
+      return Math.max(6.5, Math.min(16, 8 + Math.log2(Math.max(1, view.s / base)) * 2.2));
+    }
+
+    /* Ein Marker wie im Spiel: dunkle Scheibe, Item-Textur, farbiger Rand */
+    function badge(x, y, r, img, ring, dim) {
+      ctx.globalAlpha = dim ? 0.6 : 1;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(14, 20, 26, 0.92)";
+      ctx.fill();
+      ctx.lineWidth = Math.max(1.5, r * 0.18);
+      ctx.strokeStyle = ring;
+      ctx.stroke();
+      if (img) {
+        const s = r * 1.55;
+        ctx.drawImage(img, x - s / 2, y - s / 2, s, s);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function check(x, y, r) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = "#101820";
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.5, y);
+      ctx.lineTo(x - r * 0.1, y + r * 0.45);
+      ctx.lineTo(x + r * 0.55, y - r * 0.4);
+      ctx.lineWidth = Math.max(1.2, r * 0.3);
+      ctx.stroke();
     }
 
     function drawRects(l, sx, sy, w, h) {
@@ -93,31 +186,41 @@
 
     const visibleNode = (it, i) => filter.purity.has(it[i + 3]) && !(filter.free && it[i + 4]);
 
-    function drawNodes(l, sx, sy) {
+    function drawNodes(l, sx, sy, w, h) {
       const it = l.items;
-      ctx.lineWidth = 2;
+      const img = icon(l);
+      const base = markerRadius(w, h);
       for (let i = 0; i < it.length; i += 5) {
         if (!visibleNode(it, i)) continue;
-        ctx.beginPath();
-        ctx.arc(sx(it[i]), sy(it[i + 1]), it[i + 3] === 2 ? 7 : it[i + 3] === 1 ? 5.5 : 4, 0, 7);
-        ctx.fillStyle = l.color;
-        ctx.strokeStyle = it[i + 4] ? "#fff" : "#000";
-        ctx.fill();
-        ctx.stroke();
+        const x = sx(it[i]), y = sy(it[i + 1]);
+        const r = base * (it[i + 3] === 2 ? 1.12 : it[i + 3] === 1 ? 1 : 0.9);
+        if (x < -r || y < -r || x > w + r || y > h + r) continue;
+        const used = !!it[i + 4];
+        badge(x, y, r, img, PURITY_COLOR[it[i + 3]] || l.color, used);
+        if (!img) {  // Icon fehlt oder lädt noch: Rohstoff-Farbe als Füllung
+          ctx.beginPath();
+          ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+          ctx.fillStyle = l.color;
+          ctx.fill();
+        }
+        if (used && r > 7) check(x + r * 0.72, y + r * 0.72, Math.max(3.5, r * 0.38));
       }
     }
 
-    function drawDots(l, sx, sy) {
+    function drawDots(l, sx, sy, w, h) {
       const it = l.items;
-      ctx.lineWidth = 1;
+      const img = icon(l);
+      const r = markerRadius(w, h) * 0.95;
       for (let i = 0; i < it.length; i += 3) {
         const x = sx(it[i]), y = sy(it[i + 1]);
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, 7);
-        ctx.fillStyle = l.color;
-        ctx.strokeStyle = "#000";
-        ctx.fill();
-        ctx.stroke();
+        if (x < -r || y < -r || x > w + r || y > h + r) continue;
+        badge(x, y, r, img, l.color, l.id === "drop_open");
+        if (!img) {
+          ctx.beginPath();
+          ctx.arc(x, y, r * 0.5, 0, Math.PI * 2);
+          ctx.fillStyle = l.color;
+          ctx.fill();
+        }
       }
     }
 
@@ -207,12 +310,82 @@
       }
     }
 
+    /* ------------------------------------------------------------ Zeichnungen */
+    function markPath(m, sx, sy) {
+      const p = m.points;
+      ctx.beginPath();
+      if (m.kind === "rect") {
+        const x = sx(Math.min(p[0], p[2])), y = sy(Math.min(p[1], p[3]));
+        ctx.rect(x, y, Math.abs(p[2] - p[0]) * view.s, Math.abs(p[3] - p[1]) * view.s);
+        return;
+      }
+      ctx.moveTo(sx(p[0]), sy(p[1]));
+      if (p.length === 2) ctx.lineTo(sx(p[0]) + 0.1, sy(p[1]));  // einzelner Punkt mit dem Stift
+      for (let i = 2; i < p.length; i += 2) ctx.lineTo(sx(p[i]), sy(p[i + 1]));
+    }
+
+    function drawPin(m, sx, sy) {
+      const x = sx(m.points[0]), y = sy(m.points[1]);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(-3, -8, -10, -12, -10, -20);
+      ctx.arc(0, -20, 10, Math.PI, 0);
+      ctx.bezierCurveTo(10, -12, 3, -8, 0, 0);
+      ctx.closePath();
+      ctx.fillStyle = m.color;
+      ctx.strokeStyle = "#101820";
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, -20, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#101820";
+      ctx.fill();
+      if (m.text) {
+        ctx.font = "bold 12px Lato, sans-serif";
+        const tw = ctx.measureText(m.text).width;
+        const bw = tw + 12, bh = 19, bx = 14, by = -30;
+        ctx.fillStyle = "rgba(16, 24, 32, 0.9)";
+        ctx.strokeStyle = m.color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 4); else ctx.rect(bx, by, bw, bh);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(m.text, bx + 6, by + bh / 2);
+      }
+      ctx.restore();
+    }
+
+    function drawMark(m, sx, sy) {
+      if (m.kind === "pin") { drawPin(m, sx, sy); return; }
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      // Dunkler Saum, damit die Linie auf hellem und dunklem Gelände lesbar bleibt
+      markPath(m, sx, sy);
+      if (m.kind === "rect") {
+        ctx.fillStyle = m.color + "26";
+        ctx.fill();
+      }
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
+      ctx.lineWidth = m.width + 2;
+      ctx.stroke();
+      ctx.strokeStyle = m.color;
+      ctx.lineWidth = m.width;
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "miter";
+    }
+
     function draw() {
       const { w, h } = size();
       if (w <= 0 || h <= 0) return;
-      if (!view.s || isNaN(view.s) || view.s <= 0 || isNaN(view.x) || isNaN(view.y)) {
-        fit();
-      }
+      if (!view.s || isNaN(view.s) || view.s <= 0 || isNaN(view.x) || isNaN(view.y)) fit();
       const ratio = window.devicePixelRatio || 1;
       if (canvas.width !== Math.round(w * ratio) || canvas.height !== Math.round(h * ratio)) {
         canvas.width = Math.round(w * ratio);
@@ -222,20 +395,22 @@
       ctx.fillStyle = "#1b2a33";
       ctx.fillRect(0, 0, w, h);
 
-      const b = world ? world.bounds : DEFAULT_BOUNDS;
+      const b = bounds();
       const sx = (x) => (x - view.x) * view.s + w / 2;
       const sy = (y) => (y - view.y) * view.s + h / 2;
       if (image) ctx.drawImage(image, sx(b.x), sy(b.y), b.size * view.s, b.size * view.s);
 
-      if (!world) return;
       const painters = { rect: drawRects, line: drawLines, node: drawNodes, dot: drawDots, player: drawPlayers };
-      const order = { rect: 0, line: 1, node: 2, dot: 3, player: 4 };
-      [...world.layers].sort((a, c) => order[a.kind] - order[c.kind]).forEach((l) => {
-        if (shown(l)) {
-          if (l.id === "players") drawPlayers(l, sx, sy, w, h);
-          else if (painters[l.kind]) painters[l.kind](l, sx, sy, w, h);
-        }
+      const order = { rect: 0, line: 1, node: 2, dot: 3, player: 5 };
+      const layers = world ? [...world.layers].sort((a, c) => order[a.kind] - order[c.kind]) : [];
+      layers.forEach((l) => {
+        if (l.kind === "player" || !shown(l) || !painters[l.kind]) return;
+        painters[l.kind](l, sx, sy, w, h);
       });
+      // Planung über der Welt, Spieler ganz oben
+      if (shown(marksLayer)) marks.forEach((m) => drawMark(m, sx, sy));
+      if (draft) drawMark(draft, sx, sy);
+      layers.forEach((l) => { if (l.kind === "player" && shown(l)) drawPlayers(l, sx, sy, w, h); });
     }
 
     function segment(px, py, x1, y1, x2, y2) {
@@ -244,16 +419,39 @@
       return Math.hypot(px - x1 - t * dx, py - y1 - t * dy);
     }
 
+    /* Welche Zeichnung liegt unter dem Zeiger (Abstand in Bildschirmpixeln)? Die neueste gewinnt. */
+    function markAt(px, py) {
+      if (!shown(marksLayer)) return null;
+      const [wx, wy] = toWorld(px, py);
+      for (let k = marks.length - 1; k >= 0; k--) {
+        const m = marks[k], p = m.points;
+        const reach = (Math.max(6, m.width / 2 + 4)) / view.s;
+        if (m.kind === "pin") {
+          if (Math.hypot(p[0] - wx, p[1] - 20 / view.s - wy) < 13 / view.s) return m;
+          continue;
+        }
+        if (m.kind === "rect") {
+          const x1 = Math.min(p[0], p[2]), x2 = Math.max(p[0], p[2]), y1 = Math.min(p[1], p[3]), y2 = Math.max(p[1], p[3]);
+          if (wx > x1 - reach && wx < x2 + reach && wy > y1 - reach && wy < y2 + reach) return m;
+          continue;
+        }
+        if (p.length === 2 && Math.hypot(p[0] - wx, p[1] - wy) < reach) return m;
+        for (let i = 2; i < p.length; i += 2) {
+          if (segment(wx, wy, p[i - 2], p[i - 1], p[i], p[i + 1]) < reach) return m;
+        }
+      }
+      return null;
+    }
+
     /* Was liegt unter dem Klick? Punkte gehen vor Gebäuden, Gebäude vor Linien. */
     function pick(px, py) {
       if (!world) return "";
-      const { w, h } = size();
-      const wx = (px - w / 2) / view.s + view.x, wy = (py - h / 2) / view.s + view.y;
-      const reach = 10 / view.s;
+      const [wx, wy] = toWorld(px, py);
+      const reach = Math.max(10, markerRadius(size().w, size().h)) / view.s;
       let best = "", score = Infinity;
       for (const l of world.layers) {
         if (!shown(l)) continue;
-        const isPlayer = l.id === "players" || l.kind === "player";
+        const isPlayer = l.kind === "player";
         const rank = (isPlayer ? 0 : { node: 0, dot: 0, rect: 1, line: 2 }[l.kind]) * reach;
         if (l.kind === "line") {
           for (const line of l.items) {
@@ -283,102 +481,368 @@
       info.hidden = !text;
     }
 
-    /* Maus und Finger: ein Zeiger verschiebt, zwei zoomen, ein kurzer Klick zeigt, was dort steht */
-    const pointers = new Map();
-    let moved = 0, spread = 0;
+    function describeMark(m) {
+      const what = { pen: "Skizze", line: "Linie", rect: "Bereich", pin: "Markierung" }[m.kind];
+      return `${what}${m.text ? ` „${m.text}“` : ""} von ${m.by}`;
+    }
 
+    /* ------------------------------------------------------------ Zeichnungen laden und speichern */
+    function api(url, options) {
+      return fetch(url, Object.assign({ credentials: "same-origin", cache: "no-store" }, options)).then((res) =>
+        res.json().catch(() => ({})).then((data) => {
+          if (!res.ok) throw new Error(data.error || "Das hat nicht geklappt.");
+          return data;
+        }));
+    }
+
+    function loadMarks() {
+      if (!root.dataset.marks) return Promise.resolve();
+      return api(root.dataset.marks).then((data) => {
+        if (!alive) return;
+        // Eigene, noch nicht bestätigte Zeichnungen bleiben stehen
+        marks = data.marks.concat(marks.filter((m) => m.pending));
+        me = data.me;
+        updateMarkCount();
+        redraw();
+      }).catch(() => {});
+    }
+
+    function saveMark(m) {
+      m.pending = true;
+      m.by = "dir";
+      marks.push(m);
+      redraw();
+      api(root.dataset.marks, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": root.dataset.csrf },
+        body: JSON.stringify({ kind: m.kind, color: m.color, width: m.width, points: m.points, text: m.text || "" }),
+      }).then((saved) => {
+        const i = marks.indexOf(m);
+        if (i >= 0) marks[i] = saved; else marks.push(saved);
+        updateMarkCount();
+        redraw();
+      }).catch((err) => {
+        marks = marks.filter((x) => x !== m);
+        showInfo(err.message);
+        redraw();
+      });
+    }
+
+    function deleteMark(m) {
+      if (m.pending) return;
+      if (me !== null && m.byId !== me && !window.confirm(`${describeMark(m)} löschen?`)) return;
+      marks = marks.filter((x) => x !== m);
+      updateMarkCount();
+      redraw();
+      api(`${root.dataset.marks}/${m.id}`, { method: "DELETE", headers: { "X-CSRF-Token": root.dataset.csrf } })
+        .then(() => showInfo(`${describeMark(m)} gelöscht.`))
+        .catch((err) => { showInfo(err.message); loadMarks(); });
+    }
+
+    /* ------------------------------------------------------------ Maus und Finger
+       Werkzeug „Verschieben“: ein Zeiger verschiebt, zwei zoomen, ein kurzer Klick zeigt, was dort steht.
+       Zeichenwerkzeuge: ein Zeiger zeichnet, zwei Finger verschieben und zoomen weiterhin, die mittlere
+       oder rechte Maustaste verschiebt immer. */
+    const pointers = new Map();
+    let moved = 0, spread = 0, panning = false;
+    const local = (e) => {
+      const box = canvas.getBoundingClientRect();
+      return [e.clientX - box.left, e.clientY - box.top];
+    };
+
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     canvas.addEventListener("pointerdown", (e) => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, e);
       moved = 0;
       spread = 0;
+      if (pointers.size > 1) { draft = null; redraw(); return; }  // zweiter Finger: zoomen statt zeichnen
+      panning = tool === "move" || (e.pointerType === "mouse" && e.button !== 0);
+      if (panning || tool === "erase" || tool === "pin") return;
+      const [wx, wy] = toWorld(...local(e));
+      draft = { kind: tool, color, width, points: tool === "pen" ? [wx, wy] : [wx, wy, wx, wy] };
+      redraw();
     });
     canvas.addEventListener("pointermove", (e) => {
       const last = pointers.get(e.pointerId);
-      if (!last) return;
+      if (!last) {
+        if (tool === "erase") canvas.classList.toggle("s-map-hit", !!markAt(...local(e)));
+        return;
+      }
       pointers.set(e.pointerId, e);
+      const dx = e.clientX - last.clientX, dy = e.clientY - last.clientY;
       if (pointers.size === 1) {
-        moved += Math.abs(e.clientX - last.clientX) + Math.abs(e.clientY - last.clientY);
-        view.x -= (e.clientX - last.clientX) / view.s;
-        view.y -= (e.clientY - last.clientY) / view.s;
-        redraw();
+        moved += Math.abs(dx) + Math.abs(dy);
+        if (draft) {
+          const [wx, wy] = toWorld(...local(e));
+          const p = draft.points;
+          if (draft.kind === "pen") {
+            // Nur neue Punkte, wenn sich der Stift merklich bewegt hat (spart Platz)
+            if (Math.hypot(wx - p[p.length - 2], wy - p[p.length - 1]) * view.s >= 3 && p.length < 3998) p.push(wx, wy);
+          } else {
+            p[2] = wx;
+            p[3] = wy;
+          }
+          redraw();
+        } else if (panning) {
+          view.x -= dx / view.s;
+          view.y -= dy / view.s;
+          redraw();
+        }
       } else if (pointers.size === 2) {
         moved = 99;
         const [a, b] = [...pointers.values()];
         const now = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
         const box = canvas.getBoundingClientRect();
         if (spread) zoom(now / spread, (a.clientX + b.clientX) / 2 - box.left, (a.clientY + b.clientY) / 2 - box.top);
+        view.x -= dx / 2 / view.s;
+        view.y -= dy / 2 / view.s;
         spread = now;
       }
     });
+
+    function finishDraft() {
+      const m = draft;
+      draft = null;
+      if (!m) return;
+      const p = m.points;
+      if (m.kind !== "pen" && Math.hypot(p[2] - p[0], p[3] - p[1]) * view.s < 4) { redraw(); return; }  // nur geklickt
+      m.points = p.map((v) => Math.round(v * 10) / 10);
+      saveMark(m);
+    }
+
     const release = (e) => {
-      if (pointers.delete(e.pointerId) && e.type === "pointerup" && moved < 6) {
-        const box = canvas.getBoundingClientRect();
-        showInfo(pick(e.clientX - box.left, e.clientY - box.top));
-      }
+      if (!pointers.delete(e.pointerId)) return;
       spread = 0;
+      if (e.type !== "pointerup") { draft = null; redraw(); return; }
+      if (draft) { finishDraft(); return; }
+      if (moved >= 6 || pointers.size) return;
+      const [px, py] = local(e);
+      if (tool === "erase") {
+        const m = markAt(px, py);
+        if (m) deleteMark(m); else showInfo("Hier liegt keine Zeichnung.");
+      } else if (tool === "pin" && !panning) {
+        const text = window.prompt("Text für die Markierung (leer lassen geht auch):", "");
+        if (text === null) return;
+        const [wx, wy] = toWorld(px, py);
+        saveMark({ kind: "pin", color, width, points: [Math.round(wx * 10) / 10, Math.round(wy * 10) / 10], text: text.trim().slice(0, 120) });
+      } else {
+        const m = markAt(px, py);
+        showInfo(m ? describeMark(m) : pick(px, py));
+      }
     };
     canvas.addEventListener("pointerup", release);
     canvas.addEventListener("pointercancel", release);
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const box = canvas.getBoundingClientRect();
-      zoom(e.deltaY < 0 ? 1.25 : 0.8, e.clientX - box.left, e.clientY - box.top);
+      const [px, py] = local(e);
+      zoom(e.deltaY < 0 ? 1.25 : 0.8, px, py);
     }, { passive: false });
 
-    function control(text, color, count, checked, change) {
-      const row = document.createElement("label");
-      row.className = "s-map-row";
-      const box = document.createElement("input");
-      box.type = "checkbox";
-      box.checked = checked;
-      box.addEventListener("change", () => { change(box.checked); redraw(); });
-      row.append(box);
-      if (color) {
-        const dot = document.createElement("span");
-        dot.className = "s-map-dot";
-        dot.style.backgroundColor = color;
-        row.append(dot);
-      }
-      const name = document.createElement("span");
-      name.className = "s-map-name";
-      name.textContent = text;
-      row.append(name);
-      if (count !== undefined) {
-        const n = document.createElement("span");
-        n.className = "text-muted";
-        n.textContent = count.toLocaleString("de-DE");
-        row.append(n);
-      }
-      return row;
+    /* ------------------------------------------------------------ Werkzeugleiste */
+    const toolbar = root.querySelector(".s-map-tools");
+    function setTool(next) {
+      tool = next;
+      draft = null;
+      root.dataset.tool = next;
+      canvas.classList.remove("s-map-hit");
+      if (toolbar) toolbar.querySelectorAll("[data-tool]").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tool === next);
+        b.setAttribute("aria-pressed", String(b.dataset.tool === next));
+      });
+      // Wer zeichnet, will die Zeichnungen auch sehen
+      if (next !== "move" && !shown(marksLayer)) { saved.marks = true; keep(); buildPanel(); }
+      redraw();
+    }
+    if (toolbar) {
+      toolbar.querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => setTool(b.dataset.tool)));
+      const colors = toolbar.querySelector(".s-map-colors");
+      DRAW_COLORS.forEach((c) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "s-map-swatch";
+        b.style.backgroundColor = c;
+        b.title = "Farbe";
+        b.setAttribute("aria-label", "Farbe " + c);
+        b.classList.toggle("active", c === color);
+        b.addEventListener("click", () => {
+          color = c;
+          saved.color = c;
+          keep();
+          colors.querySelectorAll(".s-map-swatch").forEach((x) => x.classList.toggle("active", x === b));
+          if (tool === "move" || tool === "erase") setTool("pen");
+        });
+        colors.append(b);
+      });
+      const widths = toolbar.querySelector("[data-map-width]");
+      DRAW_WIDTHS.forEach(([v, text]) => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = text;
+        o.selected = v === width;
+        widths.append(o);
+      });
+      widths.addEventListener("change", () => { width = Number(widths.value); saved.width = width; keep(); });
+    }
+    setTool("move");
+
+    /* ------------------------------------------------------------ Ebenen-Menü */
+    let markCount = null;
+    function updateMarkCount() {
+      if (markCount) markCount.textContent = marks.filter((m) => !m.pending).length.toLocaleString("de-DE");
     }
 
-    function heading(text) {
-      const h = document.createElement("div");
-      h.className = "s-map-group";
-      h.textContent = text;
-      return h;
+    function picture(l, fallback) {
+      const name = iconName(l);
+      if (name) {
+        const img = document.createElement("img");
+        img.src = ICON_BASE + name;
+        img.alt = "";
+        img.className = "s-map-icon";
+        img.loading = "lazy";
+        return img;
+      }
+      const span = document.createElement("span");
+      span.className = "s-map-icon s-map-icon-fa";
+      if (fallback) {
+        const i = document.createElement("i");
+        i.className = fallback;
+        span.append(i);
+      }
+      span.style.color = l.color;
+      return span;
+    }
+
+    /* Eine Zeile pro Ebene: Icon aus dem Spiel, Name, Anzahl. Antippen schaltet um. */
+    function row(l, onToggle, fallback) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "s-map-row";
+      const set = (on) => { b.classList.toggle("is-off", !on); b.setAttribute("aria-pressed", String(on)); };
+      set(shown(l));
+      const name = document.createElement("span");
+      name.className = "s-map-name";
+      name.textContent = l.label;
+      const n = document.createElement("span");
+      n.className = "s-map-count";
+      n.textContent = l.count !== undefined ? l.count.toLocaleString("de-DE") : "";
+      b.append(picture(l, fallback), name, n);
+      b.addEventListener("click", () => {
+        saved[l.id] = !shown(l);
+        keep();
+        set(saved[l.id]);
+        if (onToggle) onToggle();
+        redraw();
+      });
+      b.refresh = () => set(shown(l));
+      return { el: b, count: n };
+    }
+
+    function chip(text, dot, on, change) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "s-map-chip";
+      if (dot) {
+        const d = document.createElement("span");
+        d.className = "s-map-dot";
+        d.style.backgroundColor = dot;
+        b.append(d);
+      }
+      b.append(text);
+      const set = (v) => { b.classList.toggle("is-off", !v); b.setAttribute("aria-pressed", String(v)); };
+      set(on);
+      b.addEventListener("click", () => { set(change()); redraw(); });
+      return b;
+    }
+
+    function section(name, layers, extra) {
+      const box = document.createElement("details");
+      box.className = "s-map-section";
+      box.open = !closed.has(name);
+      box.addEventListener("toggle", () => {
+        if (box.open) closed.delete(name); else closed.add(name);
+        saved.closed = [...closed];
+        keep();
+      });
+      const head = document.createElement("summary");
+      head.className = "s-map-group";
+      const title = document.createElement("span");
+      title.textContent = name;
+      head.append(title);
+      const rows = [];
+      if (layers.length > 1) {
+        const all = document.createElement("button");
+        all.type = "button";
+        all.className = "s-map-all";
+        const label = () => { all.textContent = layers.some(shown) ? "alle aus" : "alle an"; };
+        label();
+        all.addEventListener("click", (e) => {
+          e.preventDefault();
+          const on = !layers.some(shown);
+          layers.forEach((l) => { saved[l.id] = on; });
+          keep();
+          rows.forEach((r) => r.el.refresh());
+          label();
+          redraw();
+        });
+        head.append(all);
+        box.refreshAll = label;
+      }
+      box.append(head);
+      const list = document.createElement("div");
+      list.className = "s-map-list";
+      layers.forEach((l) => {
+        const r = row(l, () => box.refreshAll && box.refreshAll(), l.kind === "player" ? "fas fa-user-astronaut" : "");
+        rows.push(r);
+        list.append(r.el);
+      });
+      box.append(list);
+      if (extra) box.append(extra);
+      return box;
     }
 
     function buildPanel() {
       panel.replaceChildren();
       const groups = new Map();
-      world.layers.forEach((l) => {
+      (world ? world.layers : []).forEach((l) => {
         if (!groups.has(l.group)) groups.set(l.group, []);
         groups.get(l.group).push(l);
       });
-      groups.forEach((layers, name) => {
-        panel.append(heading(name));
-        layers.forEach((l) => panel.append(control(l.label, l.color, l.count, shown(l), (on) => {
-          saved[l.id] = on;
-          localStorage.setItem(STORE, JSON.stringify(saved));
-        })));
+
+      // Planung: eigene Zeichnungen, gibt es auch ohne Spielstand
+      const plan = section("Planung", []);
+      const r = row(Object.assign(marksLayer, { count: marks.filter((m) => !m.pending).length }), null, "fas fa-pencil-alt");
+      markCount = r.count;
+      plan.querySelector(".s-map-list").append(r.el);
+      const hint = document.createElement("div");
+      hint.className = "s-map-hint";
+      hint.textContent = "Oben ein Werkzeug wählen und auf der Karte zeichnen. Alle sehen die Zeichnungen.";
+      plan.append(hint);
+      panel.append(plan);
+
+      const names = [...groups.keys()].sort((a, c) => {
+        const ia = GROUP_ORDER.indexOf(a), ic = GROUP_ORDER.indexOf(c);
+        return (ia < 0 ? 99 : ia) - (ic < 0 ? 99 : ic);
+      });
+      names.forEach((name) => {
+        let extra = null;
         if (name === "Vorkommen") {
-          PURITIES.forEach(([value, text]) => panel.append(control(text, "", undefined, filter.purity.has(value), (on) => {
-            if (on) filter.purity.add(value); else filter.purity.delete(value);
+          extra = document.createElement("div");
+          extra.className = "s-map-chips";
+          PURITIES.forEach(([value, text, dot]) => extra.append(chip(text, dot, filter.purity.has(value), () => {
+            if (filter.purity.has(value)) filter.purity.delete(value); else filter.purity.add(value);
+            saved.purity = [...filter.purity];
+            keep();
+            return filter.purity.has(value);
           })));
-          panel.append(control("Nur freie", "", undefined, filter.free, (on) => { filter.free = on; }));
+          extra.append(chip("Nur freie", "", filter.free, () => {
+            filter.free = !filter.free;
+            saved.free = filter.free;
+            keep();
+            return filter.free;
+          }));
         }
+        panel.append(section(name, groups.get(name), extra));
       });
     }
 
@@ -399,12 +863,19 @@
         badge.append(icon, fn);
         status.append(badge);
       }
-      const hours = Math.round(m.seconds / 3600);
-      const when = new Date(m.savedAt).toLocaleDateString("de-DE");
+      const totalSec = Math.max(0, Math.round(m.seconds || 0));
+      const h = Math.floor(totalSec / 3600);
+      const min = Math.floor((totalSec % 3600) / 60);
+      let playTimeStr = "";
+      if (h > 0 && min > 0) playTimeStr = `${h} Std. ${min} Min. Spielzeit`;
+      else if (h > 0) playTimeStr = `${h} Std. Spielzeit`;
+      else playTimeStr = `${min} Min. Spielzeit`;
+
+      const when = m.savedAt ? new Date(m.savedAt).toLocaleDateString("de-DE") : "";
       const parts = [];
       if (m.session && (!fn || !fn.toLowerCase().startsWith(m.session.toLowerCase()))) parts.push(m.session);
-      parts.push(hours + " Std.");
-      parts.push("gespeichert " + when);
+      parts.push(playTimeStr);
+      if (when) parts.push("gespeichert am " + when);
       if (m.by) parts.push("von " + m.by);
       const text = document.createElement("span");
       text.className = "text-muted";
@@ -427,7 +898,8 @@
         if (!alive) return;
         world = data;
         describe();
-        if (world) { buildPanel(); if (!keepView) fit(); }
+        buildPanel();
+        if (world && !keepView) fit();
         redraw();
       });
     }
@@ -502,11 +974,13 @@
       started = true;
       if (window.innerWidth < 768) panel.hidden = true; // Am Handy bleibt die Karte frei, die Ebenen klappt man auf
       fit();
+      buildPanel();
       const img = new Image();
       img.onload = () => { image = img; redraw(); };
       img.onerror = () => redraw();
       img.src = root.dataset.image;
       watch();
+      loadMarks();
     }
     start();
     let fitted = false;
@@ -522,7 +996,7 @@
     resize.observe(canvas);
     return {
       root,
-      live() { if (started) watch(true); },
+      live() { if (started) { watch(true); loadMarks(); } },
       stop() { alive = false; resize.disconnect(); },
     };
   }

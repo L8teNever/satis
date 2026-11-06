@@ -63,6 +63,8 @@ def create_app() -> Flask:
                 return jsonify(error="Sync-Schlüssel ungültig. Erstell auf der Blueprint-Seite einen neuen."), 401
             g.user = user
             g.via_token = True
+            if core.sync_seen(user["id"], request.headers.get("X-Satis-Interval"), request.headers.get("X-Satis-Host")):
+                core.bump_live()  # wieder online: die Startseiten der anderen zeigen es gleich an
             return None
         user, state = core.resolve_user()
         if state != "ok":
@@ -106,7 +108,7 @@ def create_app() -> Flask:
     @app.get("/")
     def home():
         mods = [m for m in core.MODULES if not m.admin_only or g.user["role"] == "admin"]
-        return render_template("home.html", cards=mods)
+        return render_template("home.html", cards=mods, syncs=core.sync_status())
 
     @app.errorhandler(403)
     @app.errorhandler(404)

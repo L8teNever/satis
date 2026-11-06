@@ -2,16 +2,18 @@ import io
 import json
 import re
 import time
+from pathlib import Path
 
 import pytest
 
 from app import create_app
 from app.modules.karte import routes as karte_routes
-from app.modules.karte.layers import DATA, _node_info, build
+from app.modules.karte.layers import DATA, LAYERS, _icon, _node_info, build
 from app.modules.fabriken.solver import BY_ITEM, EXTERNAL, ITEMS, RECIPES, SolveError, default_recipe, solve
 
 ADMIN = {"Cf-Access-Authenticated-User-Email": "Simon@example.com"}
 FRIEND = {"Cf-Access-Authenticated-User-Email": "freund@example.com"}
+ICONS = Path(__file__).parent.parent / "app" / "static" / "icons"
 
 
 def step(result, name):
@@ -217,6 +219,8 @@ def test_world_layers():
     assert layers["pillars"]["count"] == 1 and layers["other"]["count"] == 1
     assert layers["belts"]["items"] == [[0, 0, 10, 20]] and layers["wires"]["items"] == [[0, 0, 1, 1]]
     assert "drop_open" in layers and "drop_closed" not in layers
+    assert layers["drop_open"]["icon"] == "items/harddrive.png" and layers["pillars"]["icon"] == "buildings/pillars.png"
+    assert all((ICONS / l["icon"]).exists() for l in world["layers"] if l["icon"])
     assert layers["players"]["kind"] == "player"
     assert layers["players"]["items"] == [7, 8, 0, world["labels"].index("Simon")]
     assert sum(l["count"] for l in world["layers"]) == 8  # Die Beere zählt nicht
@@ -264,3 +268,32 @@ def test_failed_save_keeps_old_world(tmp_path, monkeypatch):
     karte_routes._read_save(tmp_path, sav, "Simon")
     assert (tmp_path / "world.json").read_text() == "alt" and not sav.exists()
     assert json.loads((tmp_path / "status.json").read_text())["state"] == "failed"
+
+
+def test_every_layer_has_a_game_icon():
+    assert all((ICONS / _icon(row[0])).exists() for row in LAYERS if row[0] != "players")
+
+
+def test_map_drawings(client):
+    page = client.get("/karte/", headers=ADMIN).text
+    assert 'data-marks="/karte/zeichnungen"' in page and 'data-tool="pen"' in page
+    send = {**ADMIN, "X-CSRF-Token": re.search(r'data-csrf="([^"]+)"', page).group(1)}
+    assert client.get("/karte/zeichnungen", headers=ADMIN).json["marks"] == []
+    for bad in ({"kind": "kreis", "color": "#ff0000", "points": [0, 0]},
+                {"kind": "pin", "color": "rot", "points": [0, 0]},
+                {"kind": "line", "color": "#ff0000", "points": [0, 0, 1]},
+                {"kind": "pen", "color": "#ff0000", "points": [0, "x"]},
+                {"kind": "pin", "color": "#ff0000", "points": [0, 1e9]}):
+        assert client.post("/karte/zeichnungen", headers=send, json=bad).status_code == 400
+    assert client.post("/karte/zeichnungen", json={"kind": "pin", "color": "#ff0000", "points": [0, 0]},
+                       headers=ADMIN).status_code == 400  # ohne CSRF-Token
+    r = client.post("/karte/zeichnungen", headers=send,
+                    json={"kind": "pin", "color": "#FF0000", "points": [1.234, -5], "text": " Eisenfabrik ", "width": 99})
+    assert r.status_code == 201
+    mark = r.json
+    assert mark["color"] == "#ff0000" and mark["text"] == "Eisenfabrik" and mark["width"] == 20 and mark["by"] == "Simon"
+    assert mark["points"] == [1.2, -5]
+    assert [m["id"] for m in client.get("/karte/zeichnungen", headers=ADMIN).json["marks"]] == [mark["id"]]
+    assert client.delete(f"/karte/zeichnungen/{mark['id']}", headers=send).status_code == 200
+    assert client.delete(f"/karte/zeichnungen/{mark['id']}", headers=send).status_code == 404
+    assert client.get("/karte/zeichnungen", headers=ADMIN).json["marks"] == []

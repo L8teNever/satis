@@ -200,6 +200,22 @@
   }
 
 
+  /* Sync-Kachel auf der Startseite: Meldet sich ein Skript nicht mehr, gibt es kein Ereignis vom Server.
+     Darum steht die Frist im HTML (data-offline-at) und hier wird nach Ablauf auf offline geschaltet. */
+  setInterval(() => {
+    const now = Date.now() / 1000;
+    document.querySelectorAll("[data-offline-at]").forEach((el) => {
+      if (Number(el.dataset.offlineAt) > now) return;
+      el.removeAttribute("data-offline-at");
+      el.classList.replace("is-online", "is-offline");
+      const state = el.querySelector(".s-sync-state");
+      if (state) state.textContent = "offline";
+      const tile = el.closest(".s-sync-tile");
+      const icon = tile && tile.querySelector("[data-sync-icon]");
+      if (icon && !tile.querySelector(".s-sync.is-online")) icon.classList.replace("text-success", "text-danger");
+    });
+  }, 10000);
+
   /* Lebenszyklus für Seitenskripte: satis:load meldet neue Inhalte (beim Start, nach Seitenwechsel und Live-Tausch),
      satis:unload kommt vorher für Inhalte, die gleich verschwinden. event.target ist der Bereich. */
   const signal = (target, name) => target.dispatchEvent(new CustomEvent(name, { bubbles: true }));
